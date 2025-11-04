@@ -8,7 +8,7 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
     bLz = Val(boundary[5])
     bRz = Val(boundary[6])
 
-    ϵθ = 1e-18  # small number to avoid division by zero for limiter
+    ϵθ = 1.0e-18  # small number to avoid division by zero for limiter
 
     # fusion of loops for better performance
     @inbounds @maybe_threads multithreading for I in CartesianIndices(fl.x)
@@ -16,17 +16,17 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
 
         # --- x-direction reconstruction ---
         iwww = left_index(i, 3, nx, bLx)
-        iww  = left_index(i, 2, nx, bLx)
-        iw   = left_index(i, 1, nx, bLx)
-        ie   = right_index(i, 0, nx, bRx)
-        iee  = right_index(i, 1, nx, bRx)
+        iww = left_index(i, 2, nx, bLx)
+        iw = left_index(i, 1, nx, bLx)
+        ie = right_index(i, 0, nx, bRx)
+        iee = right_index(i, 1, nx, bRx)
         ieee = right_index(i, 2, nx, bRx)
 
         u1 = u[iwww, j, k]
         u2 = u[iww, j, k]
-        u3 = u[iw,   j, k]
-        u4 = u[ie,   j, k]
-        u5 = u[iee,  j, k]
+        u3 = u[iw, j, k]
+        u4 = u[ie, j, k]
+        u5 = u[iee, j, k]
         u6 = u[ieee, j, k]
 
         fl.x[I] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
@@ -55,17 +55,17 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
         @inbounds if i < nx + 1
             # --- y-direction reconstruction ---
             jwww = left_index(j, 3, ny, bLy)
-            jww  = left_index(j, 2, ny, bLy)
-            jw   = left_index(j, 1, ny, bLy)
-            je   = right_index(j, 0, ny, bRy)
-            jee  = right_index(j, 1, ny, bRy)
+            jww = left_index(j, 2, ny, bLy)
+            jw = left_index(j, 1, ny, bLy)
+            je = right_index(j, 0, ny, bRy)
+            jee = right_index(j, 1, ny, bRy)
             jeee = right_index(j, 2, ny, bRy)
 
             u1 = u[i, jwww, k]
             u2 = u[i, jww, k]
-            u3 = u[i, jw,   k]
-            u4 = u[i, je,   k]
-            u5 = u[i, jee,  k]
+            u3 = u[i, jw, k]
+            u4 = u[i, je, k]
+            u5 = u[i, jee, k]
             u6 = u[i, jeee, k]
 
             fl.y[I] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
@@ -91,10 +91,10 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
 
             # --- z-direction reconstruction ---
             kwww = left_index(k, 3, nz, bLz)
-            kww  = left_index(k, 2, nz, bLz)
-            kw   = left_index(k, 1, nz, bLz)
-            ke   = right_index(k, 0, nz, bRz)
-            kee  = right_index(k, 1, nz, bRz)
+            kww = left_index(k, 2, nz, bLz)
+            kw = left_index(k, 1, nz, bLz)
+            ke = right_index(k, 0, nz, bRz)
+            kee = right_index(k, 1, nz, bRz)
             keee = right_index(k, 2, nz, bRz)
 
             u1 = u[i, j, kwww]
@@ -133,17 +133,17 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
             j = ny + 1
 
             jwww = left_index(j, 3, ny, bLy)
-            jww  = left_index(j, 2, ny, bLy)
-            jw   = left_index(j, 1, ny, bLy)
-            je   = right_index(j, 0, ny, bRy)
-            jee  = right_index(j, 1, ny, bRy)
+            jww = left_index(j, 2, ny, bLy)
+            jw = left_index(j, 1, ny, bLy)
+            je = right_index(j, 0, ny, bRy)
+            jee = right_index(j, 1, ny, bRy)
             jeee = right_index(j, 2, ny, bRy)
 
             u1 = u[i, jwww, k]
             u2 = u[i, jww, k]
-            u3 = u[i, jw,   k]
-            u4 = u[i, je,   k]
-            u5 = u[i, jee,  k]
+            u3 = u[i, jw, k]
+            u4 = u[i, je, k]
+            u5 = u[i, jee, k]
             u6 = u[i, jeee, k]
 
             fl.y[i, j, k] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
@@ -175,10 +175,10 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
             k = nz + 1
 
             kwww = left_index(k, 3, nz, bLz)
-            kww  = left_index(k, 2, nz, bLz)
-            kw   = left_index(k, 1, nz, bLz)
-            ke   = right_index(k, 0, nz, bRz)
-            kee  = right_index(k, 1, nz, bRz)
+            kww = left_index(k, 2, nz, bLz)
+            kw = left_index(k, 1, nz, bLz)
+            ke = right_index(k, 0, nz, bRz)
+            kee = right_index(k, 1, nz, bRz)
             keee = right_index(k, 2, nz, bRz)
 
             u1 = u[i, j, kwww]

@@ -47,12 +47,15 @@
     if lim_ZS
         # --- Zhang-Shu positivity limiter ---
         # separate averages for left and right
+
+        ϵθ = 1.0e-16 # small number to avoid division by zero
+
         u_avg = u3
 
         θ_fl = min(
             1.0,
-            abs((u_max - u_avg)/(fl[i] - u_avg + ϵθ)),
-            abs((u_avg - u_min)/(u_avg - fl[i] + ϵθ))
+            abs((u_max - u_avg) / (fl[i] - u_avg + ϵθ)),
+            abs((u_avg - u_min) / (u_avg - fl[i] + ϵθ))
         )
         # apply limiter
         fl[i] = θ_fl * (fl[i] - u_avg) + u_avg
@@ -62,8 +65,8 @@
 
         θ_fr = min(
             1.0,
-            abs((u_max - u_avg)/(fr[i] - u_avg + ϵθ)),
-            abs((u_avg - u_min)/(u_avg - fr[i] + ϵθ))
+            abs((u_max - u_avg) / (fr[i] - u_avg + ϵθ)),
+            abs((u_avg - u_min) / (u_avg - fr[i] + ϵθ))
         )
         fr[i] = θ_fr * (fr[i] - u_avg) + u_avg
     end

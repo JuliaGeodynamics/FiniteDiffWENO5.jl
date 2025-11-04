@@ -5,7 +5,7 @@ function WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
     bR = Val(boundary[2])
 
     # small number to avoid division by zero
-    ϵθ = 1e-18
+    ϵθ = 1.0e-18
 
     return @inbounds @maybe_threads multithreading for i in axes(fl.x, 1)
         iwww = left_index(i, 3, nx, bL)
@@ -32,8 +32,8 @@ function WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
 
             θ_fl = min(
                 1.0,
-                abs((u_max - u_avg)/(fl.x[i] - u_avg + ϵθ)),
-                abs((u_avg - u_min)/(u_avg - fl.x[i] + ϵθ))
+                abs((u_max - u_avg) / (fl.x[i] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fl.x[i] + ϵθ))
             )
             # apply limiter
             fl.x[i] = θ_fl * (fl.x[i] - u_avg) + u_avg
@@ -43,8 +43,8 @@ function WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
 
             θ_fr = min(
                 1.0,
-                abs((u_max - u_avg)/(fr.x[i] - u_avg + ϵθ)),
-                abs((u_avg - u_min)/(u_avg - fr.x[i] + ϵθ))
+                abs((u_max - u_avg) / (fr.x[i] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fr.x[i] + ϵθ))
             )
             fr.x[i] = θ_fr * (fr.x[i] - u_avg) + u_avg
         end

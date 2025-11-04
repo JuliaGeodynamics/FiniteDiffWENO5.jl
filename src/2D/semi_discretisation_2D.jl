@@ -6,17 +6,17 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
     bLy = Val(boundary[3])
     bRy = Val(boundary[4])
 
-    ϵθ = 1e-18  # small number to avoid division by zero for limiter
+    ϵθ = 1.0e-18  # small number to avoid division by zero for limiter
 
     @inbounds @maybe_threads multithreading for I in CartesianIndices(fl.x)
         i, j = Tuple(I)
 
         # --- x-direction reconstruction ---
         iwww = left_index(i, 3, nx, bLx)
-        iww  = left_index(i, 2, nx, bLx)
-        iw   = left_index(i, 1, nx, bLx)
-        ie   = right_index(i, 0, nx, bRx)
-        iee  = right_index(i, 1, nx, bRx)
+        iww = left_index(i, 2, nx, bLx)
+        iw = left_index(i, 1, nx, bLx)
+        ie = right_index(i, 0, nx, bRx)
+        iee = right_index(i, 1, nx, bRx)
         ieee = right_index(i, 2, nx, bRx)
 
         u1 = u[iwww, j]; u2 = u[iww, j]; u3 = u[iw, j]
@@ -48,10 +48,10 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
         # --- y-direction reconstruction ---
         if i <= nx  # avoid last column (handled separately)
             jwww = left_index(j, 3, ny, bLy)
-            jww  = left_index(j, 2, ny, bLy)
-            jw   = left_index(j, 1, ny, bLy)
-            je   = right_index(j, 0, ny, bRy)
-            jee  = right_index(j, 1, ny, bRy)
+            jww = left_index(j, 2, ny, bLy)
+            jw = left_index(j, 1, ny, bLy)
+            je = right_index(j, 0, ny, bRy)
+            jee = right_index(j, 1, ny, bRy)
             jeee = right_index(j, 2, ny, bRy)
 
             u1 = u[i, jwww]; u2 = u[i, jww]; u3 = u[i, jw]
@@ -83,14 +83,14 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
     end
 
     # Handle last row for y-direction (top boundary)
-    @inbounds @maybe_threads multithreading for i in axes(fl.y, 1)
+    return @inbounds @maybe_threads multithreading for i in axes(fl.y, 1)
         j = ny + 1
 
         jwww = left_index(j, 3, ny, bLy)
-        jww  = left_index(j, 2, ny, bLy)
-        jw   = left_index(j, 1, ny, bLy)
-        je   = right_index(j, 0, ny, bRy)
-        jee  = right_index(j, 1, ny, bRy)
+        jww = left_index(j, 2, ny, bLy)
+        jw = left_index(j, 1, ny, bLy)
+        je = right_index(j, 0, ny, bRy)
+        jee = right_index(j, 1, ny, bRy)
         jeee = right_index(j, 2, ny, bRy)
 
         u1 = u[i, jwww]; u2 = u[i, jww]; u3 = u[i, jw]
