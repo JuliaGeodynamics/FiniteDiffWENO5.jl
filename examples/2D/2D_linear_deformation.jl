@@ -21,22 +21,22 @@ function main(; nx = 400, ny = 400)
     # Staggered grids:
     # vx at x-faces → (nx+1, ny)
     x_vx = range(0, stop = Lx, length = nx + 1)
-    y_vx = range(Δy/2, stop = Lx - Δy/2, length = ny)
+    y_vx = range(Δy / 2, stop = Lx - Δy / 2, length = ny)
 
     # vy at y-faces → (nx, ny+1)
-    x_vy = range(Δx/2, stop = Lx - Δx/2, length = nx)
+    x_vy = range(Δx / 2, stop = Lx - Δx / 2, length = nx)
     y_vy = range(0, stop = Lx, length = ny + 1)
 
     # Make 2D coordinate arrays with correct orientation
     X_vx = repeat(x_vx, 1, ny)         # (nx+1, ny)
-    Y_vx = repeat(y_vx', nx+1, 1)      # (nx+1, ny)
+    Y_vx = repeat(y_vx', nx + 1, 1)      # (nx+1, ny)
 
-    X_vy = repeat(x_vy, 1, ny+1)       # (nx, ny+1)
+    X_vy = repeat(x_vy, 1, ny + 1)       # (nx, ny+1)
     Y_vy = repeat(y_vy', nx, 1)        # (nx, ny+1)
 
     # Define velocity field (example: divergence-free vortex)
     vx0 = .-2π .* sin.(π .* X_vx) .* cos.(π .* Y_vx)  # (nx+1, ny)
-    vy0 =  2π .* cos.(π .* X_vy) .* sin.(π .* Y_vy)   # (nx, ny+1)
+    vy0 = 2π .* cos.(π .* X_vy) .* sin.(π .* Y_vy)   # (nx, ny+1)
 
     v = (; x = vx0, y = vy0)
 
