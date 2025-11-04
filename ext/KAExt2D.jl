@@ -48,6 +48,8 @@
         fr[i, j] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
         if lim_ZS
+            ϵθ = 1e-16 # small number to avoid division by zero
+
             # left interface (from left stencil)
             u_avg = u3
             θ_fl = min(
