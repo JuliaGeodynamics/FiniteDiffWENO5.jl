@@ -33,23 +33,8 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
         fr.x[I] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
         if lim_ZS
-            # left interface (from left stencil)
-            u_avg = u3
-            θ_fl = min(
-                1.0,
-                abs((u_max - u_avg) / (fl.x[I] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fl.x[I] + ϵθ))
-            )
-            fl.x[I] = θ_fl * (fl.x[I] - u_avg) + u_avg
-
-            # right interface (from right stencil)
-            u_avg = u4
-            θ_fr = min(
-                1.0,
-                abs((u_max - u_avg) / (fr.x[I] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fr.x[I] + ϵθ))
-            )
-            fr.x[I] = θ_fr * (fr.x[I] - u_avg) + u_avg
+            fl.x[I] = zhang_shu_limit(fl.x[I], u3, u_min, u_max, ϵθ)
+            fr.x[I] = zhang_shu_limit(fr.x[I], u4, u_min, u_max, ϵθ)
         end
 
         @inbounds if i < nx + 1
@@ -72,21 +57,8 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
             fr.y[I] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
             if lim_ZS
-                u_avg = u3
-                θ_fl = min(
-                    1.0,
-                    abs((u_max - u_avg) / (fl.y[I] - u_avg + ϵθ)),
-                    abs((u_avg - u_min) / (u_avg - fl.y[I] + ϵθ))
-                )
-                fl.y[I] = θ_fl * (fl.y[I] - u_avg) + u_avg
-
-                u_avg = u4
-                θ_fr = min(
-                    1.0,
-                    abs((u_max - u_avg) / (fr.y[I] - u_avg + ϵθ)),
-                    abs((u_avg - u_min) / (u_avg - fr.y[I] + ϵθ))
-                )
-                fr.y[I] = θ_fr * (fr.y[I] - u_avg) + u_avg
+                fl.y[I] = zhang_shu_limit(fl.y[I], u3, u_min, u_max, ϵθ)
+                fr.y[I] = zhang_shu_limit(fr.y[I], u4, u_min, u_max, ϵθ)
             end
 
             # --- z-direction reconstruction ---
@@ -108,21 +80,8 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
             fr.z[I] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
             if lim_ZS
-                u_avg = u3
-                θ_fl = min(
-                    1.0,
-                    abs((u_max - u_avg) / (fl.z[I] - u_avg + ϵθ)),
-                    abs((u_avg - u_min) / (u_avg - fl.z[I] + ϵθ))
-                )
-                fl.z[I] = θ_fl * (fl.z[I] - u_avg) + u_avg
-
-                u_avg = u4
-                θ_fr = min(
-                    1.0,
-                    abs((u_max - u_avg) / (fr.z[I] - u_avg + ϵθ)),
-                    abs((u_avg - u_min) / (u_avg - fr.z[I] + ϵθ))
-                )
-                fr.z[I] = θ_fr * (fr.z[I] - u_avg) + u_avg
+                fl.z[I] = zhang_shu_limit(fl.z[I], u3, u_min, u_max, ϵθ)
+                fr.z[I] = zhang_shu_limit(fr.z[I], u4, u_min, u_max, ϵθ)
             end
         end
     end
@@ -150,21 +109,8 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
             fr.y[i, j, k] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
             if lim_ZS
-                u_avg = u3
-                θ_fl = min(
-                    1.0,
-                    abs((u_max - u_avg) / (fl.y[i, j, k] - u_avg + ϵθ)),
-                    abs((u_avg - u_min) / (u_avg - fl.y[i, j, k] + ϵθ))
-                )
-                fl.y[i, j, k] = θ_fl * (fl.y[i, j, k] - u_avg) + u_avg
-
-                u_avg = u4
-                θ_fr = min(
-                    1.0,
-                    abs((u_max - u_avg) / (fr.y[i, j, k] - u_avg + ϵθ)),
-                    abs((u_avg - u_min) / (u_avg - fr.y[i, j, k] + ϵθ))
-                )
-                fr.y[i, j, k] = θ_fr * (fr.y[i, j, k] - u_avg) + u_avg
+                fl.y[i, j, k] = zhang_shu_limit(fl.y[i, j, k], u3, u_min, u_max, ϵθ)
+                fr.y[i, j, k] = zhang_shu_limit(fr.y[i, j, k], u4, u_min, u_max, ϵθ)
             end
         end
     end
@@ -192,21 +138,8 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
             fr.z[i, j, k] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
             if lim_ZS
-                u_avg = u3
-                θ_fl = min(
-                    1.0,
-                    abs((u_max - u_avg) / (fl.z[i, j, k] - u_avg + ϵθ)),
-                    abs((u_avg - u_min) / (u_avg - fl.z[i, j, k] + ϵθ))
-                )
-                fl.z[i, j, k] = θ_fl * (fl.z[i, j, k] - u_avg) + u_avg
-
-                u_avg = u4
-                θ_fr = min(
-                    1.0,
-                    abs((u_max - u_avg) / (fr.z[i, j, k] - u_avg + ϵθ)),
-                    abs((u_avg - u_min) / (u_avg - fr.z[i, j, k] + ϵθ))
-                )
-                fr.z[i, j, k] = θ_fr * (fr.z[i, j, k] - u_avg) + u_avg
+                fl.z[i, j, k] = zhang_shu_limit(fl.z[i, j, k], u3, u_min, u_max, ϵθ)
+                fr.z[i, j, k] = zhang_shu_limit(fr.z[i, j, k], u4, u_min, u_max, ϵθ)
             end
         end
     end

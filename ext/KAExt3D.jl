@@ -44,29 +44,14 @@
         u5 = u[iee, j, k]
         u6 = u[ieee, j, k]
 
-        fl[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
-        fr[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+        fl[i, j, k] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
+        fr[i, j, k] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
         if lim_ZS
             ϵθ = 1.0e-16 # small number to avoid division by zero
 
-            # left interface (from left stencil)
-            u_avg = u3
-            θ_fl = min(
-                1.0,
-                abs((u_max - u_avg) / (fl[I...] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fl[I...] + ϵθ))
-            )
-            fl[I...] = θ_fl * (fl[I...] - u_avg) + u_avg
-
-            # right interface (from right stencil)
-            u_avg = u4
-            θ_fr = min(
-                1.0,
-                abs((u_max - u_avg) / (fr[I...] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fr[I...] + ϵθ))
-            )
-            fr[I...] = θ_fr * (fr[I...] - u_avg) + u_avg
+            fl[I...] = zhang_shu_limit(fl[I...], u3, u_min, u_max, ϵθ)
+            fr[I...] = zhang_shu_limit(fr[I...], u4, u_min, u_max, ϵθ)
         end
     end
 end
@@ -117,29 +102,14 @@ end
         u5 = u[i, jee, k]
         u6 = u[i, jeee, k]
 
-        fl[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
-        fr[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+        fl[i, j, k] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
+        fr[i, j, k] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
         if lim_ZS
             ϵθ = 1.0e-16 # small number to avoid division by zero
 
-            # left interface (from left stencil)
-            u_avg = u3
-            θ_fl = min(
-                1.0,
-                abs((u_max - u_avg) / (fl[I...] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fl[I...] + ϵθ))
-            )
-            fl[I...] = θ_fl * (fl[I...] - u_avg) + u_avg
-
-            # right interface (from right stencil)
-            u_avg = u4
-            θ_fr = min(
-                1.0,
-                abs((u_max - u_avg) / (fr[I...] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fr[I...] + ϵθ))
-            )
-            fr[I...] = θ_fr * (fr[I...] - u_avg) + u_avg
+            fl[I...] = zhang_shu_limit(fl[I...], u3, u_min, u_max, ϵθ)
+            fr[I...] = zhang_shu_limit(fr[I...], u4, u_min, u_max, ϵθ)
         end
     end
 end
@@ -190,29 +160,14 @@ end
         u5 = u[i, j, kee]
         u6 = u[i, j, keee]
 
-        fl[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
-        fr[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+        fl[i, j, k] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
+        fr[i, j, k] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
         if lim_ZS
             ϵθ = 1.0e-16 # small number to avoid division by zero
 
-            # left interface (from left stencil)
-            u_avg = u3
-            θ_fl = min(
-                1.0,
-                abs((u_max - u_avg) / (fl[I...] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fl[I...] + ϵθ))
-            )
-            fl[I...] = θ_fl * (fl[I...] - u_avg) + u_avg
-
-            # right interface (from right stencil)
-            u_avg = u4
-            θ_fr = min(
-                1.0,
-                abs((u_max - u_avg) / (fr[I...] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fr[I...] + ϵθ))
-            )
-            fr[I...] = θ_fr * (fr[I...] - u_avg) + u_avg
+            fl[I...] = zhang_shu_limit(fl[I...], u3, u_min, u_max, ϵθ)
+            fr[I...] = zhang_shu_limit(fr[I...], u4, u_min, u_max, ϵθ)
         end
     end
 end

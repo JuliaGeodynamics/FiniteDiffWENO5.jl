@@ -28,25 +28,8 @@ function WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
         if lim_ZS
             # --- Zhang-Shu positivity limiter ---
             # separate averages for left and right
-            u_avg = u3
-
-            θ_fl = min(
-                1.0,
-                abs((u_max - u_avg) / (fl.x[i] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fl.x[i] + ϵθ))
-            )
-            # apply limiter
-            fl.x[i] = θ_fl * (fl.x[i] - u_avg) + u_avg
-
-            # separate averages for left and right
-            u_avg = u4
-
-            θ_fr = min(
-                1.0,
-                abs((u_max - u_avg) / (fr.x[i] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fr.x[i] + ϵθ))
-            )
-            fr.x[i] = θ_fr * (fr.x[i] - u_avg) + u_avg
+            fl.x[i] = zhang_shu_limit(fl.x[i], u3, u_min, u_max, ϵθ)
+            fr.x[i] = zhang_shu_limit(fr.x[i], u4, u_min, u_max, ϵθ)
         end
     end
 end

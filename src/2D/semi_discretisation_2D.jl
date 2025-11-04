@@ -33,7 +33,7 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
                 abs((u_max - u_avg) / (fl.x[I] - u_avg + ϵθ)),
                 abs((u_avg - u_min) / (u_avg - fl.x[I] + ϵθ))
             )
-            fl.x[I] = θ_fl * (fl.x[I] - u_avg) + u_avg
+            fl.x[I] = @muladd θ_fl * (fl.x[I] - u_avg) + u_avg
 
             u_avg = u4
 
@@ -42,7 +42,7 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
                 abs((u_max - u_avg) / (fr.x[I] - u_avg + ϵθ)),
                 abs((u_avg - u_min) / (u_avg - fr.x[I] + ϵθ))
             )
-            fr.x[I] = θ_fr * (fr.x[I] - u_avg) + u_avg
+            fr.x[I] = @muladd θ_fr * (fr.x[I] - u_avg) + u_avg
         end
 
         # --- y-direction reconstruction ---
@@ -61,23 +61,8 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
             fr.y[I] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
             if lim_ZS
-                u_avg = u3
-
-                θ_fl = min(
-                    1.0,
-                    abs((u_max - u_avg) / (fl.y[I] - u_avg + ϵθ)),
-                    abs((u_avg - u_min) / (u_avg - fl.y[I] + ϵθ))
-                )
-                fl.y[I] = θ_fl * (fl.y[I] - u_avg) + u_avg
-
-                u_avg = u4
-
-                θ_fr = min(
-                    1.0,
-                    abs((u_max - u_avg) / (fr.y[I] - u_avg + ϵθ)),
-                    abs((u_avg - u_min) / (u_avg - fr.y[I] + ϵθ))
-                )
-                fr.y[I] = θ_fr * (fr.y[I] - u_avg) + u_avg
+                fl.y[I] = zhang_shu_limit(fl.y[I], u3, u_min, u_max, ϵθ)
+                fr.y[I] = zhang_shu_limit(fr.y[I], u4, u_min, u_max, ϵθ)
             end
         end
     end
@@ -100,23 +85,8 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
         fr.y[i, j] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
         if lim_ZS
-            u_avg = u3
-
-            θ_fl = min(
-                1.0,
-                abs((u_max - u_avg) / (fl.y[i, j] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fl.y[i, j] + ϵθ))
-            )
-            fl.y[i, j] = θ_fl * (fl.y[i, j] - u_avg) + u_avg
-
-            u_avg = u4
-
-            θ_fr = min(
-                1.0,
-                abs((u_max - u_avg) / (fr.y[i, j] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fr.y[i, j] + ϵθ))
-            )
-            fr.y[i, j] = θ_fr * (fr.y[i, j] - u_avg) + u_avg
+            fl.y[i, j] = zhang_shu_limit(fl.y[i, j], u3, u_min, u_max, ϵθ)
+            fr.y[i, j] = zhang_shu_limit(fr.y[i, j], u4, u_min, u_max, ϵθ)
         end
     end
 end

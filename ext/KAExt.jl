@@ -1,5 +1,6 @@
 module KAExt
 using FiniteDiffWENO5
+using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind
 using MuladdMacro
 using UnPack
 using KernelAbstractions
