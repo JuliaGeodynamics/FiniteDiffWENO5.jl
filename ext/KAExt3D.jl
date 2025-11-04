@@ -1,4 +1,4 @@
-@kernel function WENO_flux_KA_3D_x(fl, fr, u, boundary, nx, χ, γ, ζ, ϵ, g, O)
+@kernel function WENO_flux_KA_3D_x(fl, fr, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, g, O)
 
     I = @index(Global, NTuple)
     I = I + O
@@ -46,10 +46,30 @@
 
         fl[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
         fr[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+        if lim_ZS
+            # left interface (from left stencil)
+            u_avg = u3
+            θ_fl = min(
+                1.0,
+                abs((u_max - u_avg) / (fl.x[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fl.x[I] + ϵθ))
+            )
+            fl.x[I] = θ_fl * (fl.x[I] - u_avg) + u_avg
+
+            # right interface (from right stencil)
+            u_avg = u4
+            θ_fr = min(
+                1.0,
+                abs((u_max - u_avg) / (fr.x[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fr.x[I] + ϵθ))
+            )
+            fr.x[I] = θ_fr * (fr.x[I] - u_avg) + u_avg
+        end
     end
 end
 
-@kernel function WENO_flux_KA_3D_y(fl, fr, u, boundary, ny, χ, γ, ζ, ϵ, g, O)
+@kernel function WENO_flux_KA_3D_y(fl, fr, u, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, g, O)
 
     I = @index(Global, NTuple)
     I = I + O
@@ -97,10 +117,30 @@ end
 
         fl[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
         fr[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+        if lim_ZS
+            # left interface (from left stencil)
+            u_avg = u3
+            θ_fl = min(
+                1.0,
+                abs((u_max - u_avg) / (fl.y[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fl.y[I] + ϵθ))
+            )
+            fl.y[I] = θ_fl * (fl.y[I] - u_avg) + u_avg
+
+            # right interface (from right stencil)
+            u_avg = u4
+            θ_fr = min(
+                1.0,
+                abs((u_max - u_avg) / (fr.y[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fr.y[I] + ϵθ))
+            )
+            fr.y[I] = θ_fr * (fr.y[I] - u_avg) + u_avg
+        end
     end
 end
 
-@kernel function WENO_flux_KA_3D_z(fl, fr, u, boundary, nz, χ, γ, ζ, ϵ, g, O)
+@kernel function WENO_flux_KA_3D_z(fl, fr, u, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, g, O)
 
     I = @index(Global, NTuple)
     I = I + O
@@ -148,6 +188,26 @@ end
 
         fl[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
         fr[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+        if lim_ZS
+            # left interface (from left stencil)
+            u_avg = u3
+            θ_fl = min(
+                1.0,
+                abs((u_max - u_avg) / (fl.z[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fl.z[I] + ϵθ))
+            )
+            fl.z[I] = θ_fl * (fl.z[I] - u_avg) + u_avg
+
+            # right interface (from right stencil)
+            u_avg = u4
+            θ_fr = min(
+                1.0,
+                abs((u_max - u_avg) / (fr.z[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fr.z[I] + ϵθ))
+            )
+            fr.z[I] = θ_fr * (fr.z[I] - u_avg) + u_avg
+        end
     end
 end
 
