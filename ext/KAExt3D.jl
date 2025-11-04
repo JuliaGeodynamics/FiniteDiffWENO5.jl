@@ -1,4 +1,4 @@
-@kernel inbounds = true function WENO_flux_KA_3D_x(fl, fr, u, boundary, nx, χ, γ, ζ, ϵ, g, O)
+@kernel function WENO_flux_KA_3D_x(fl, fr, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, g, O)
 
     I = @index(Global, NTuple)
     I = I + O
@@ -44,12 +44,19 @@
         u5 = u[iee, j, k]
         u6 = u[ieee, j, k]
 
-        fl[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
-        fr[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+        fl[i, j, k] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
+        fr[i, j, k] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+        if lim_ZS
+            ϵθ = 1.0e-16 # small number to avoid division by zero
+
+            fl[I...] = zhang_shu_limit(fl[I...], u3, u_min, u_max, ϵθ)
+            fr[I...] = zhang_shu_limit(fr[I...], u4, u_min, u_max, ϵθ)
+        end
     end
 end
 
-@kernel inbounds = true function WENO_flux_KA_3D_y(fl, fr, u, boundary, ny, χ, γ, ζ, ϵ, g, O)
+@kernel function WENO_flux_KA_3D_y(fl, fr, u, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, g, O)
 
     I = @index(Global, NTuple)
     I = I + O
@@ -95,12 +102,19 @@ end
         u5 = u[i, jee, k]
         u6 = u[i, jeee, k]
 
-        fl[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
-        fr[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+        fl[i, j, k] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
+        fr[i, j, k] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+        if lim_ZS
+            ϵθ = 1.0e-16 # small number to avoid division by zero
+
+            fl[I...] = zhang_shu_limit(fl[I...], u3, u_min, u_max, ϵθ)
+            fr[I...] = zhang_shu_limit(fr[I...], u4, u_min, u_max, ϵθ)
+        end
     end
 end
 
-@kernel inbounds = true function WENO_flux_KA_3D_z(fl, fr, u, boundary, nz, χ, γ, ζ, ϵ, g, O)
+@kernel function WENO_flux_KA_3D_z(fl, fr, u, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, g, O)
 
     I = @index(Global, NTuple)
     I = I + O
@@ -146,12 +160,19 @@ end
         u5 = u[i, j, kee]
         u6 = u[i, j, keee]
 
-        fl[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
-        fr[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+        fl[i, j, k] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
+        fr[i, j, k] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+        if lim_ZS
+            ϵθ = 1.0e-16 # small number to avoid division by zero
+
+            fl[I...] = zhang_shu_limit(fl[I...], u3, u_min, u_max, ϵθ)
+            fr[I...] = zhang_shu_limit(fr[I...], u4, u_min, u_max, ϵθ)
+        end
     end
 end
 
-@kernel inbounds = true function WENO_semi_discretisation_weno5_KA_3D!(du, fl, fr, v, stag, Δx_, Δy_, Δz_, g, O)
+@kernel function WENO_semi_discretisation_weno5_KA_3D!(du, fl, fr, v, stag, Δx_, Δy_, Δz_, g, O)
 
     I = @index(Global, Cartesian)
     I = I + O

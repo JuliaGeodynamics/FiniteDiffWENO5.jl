@@ -1,4 +1,4 @@
-@kernel inbounds = true function WENO_flux_KA_1D(fl, fr, u, boundary, nx, χ, γ, ζ, ϵ, g, O)
+@kernel inbounds = true function WENO_flux_KA_1D(fl, fr, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, g, O)
 
     I = @index(Global, NTuple)
     I = I + O
@@ -41,8 +41,16 @@
     u5 = u[iee]
     u6 = u[ieee]
 
-    fl[i] = FiniteDiffWENO5.weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
-    fr[i] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+    fl[i] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
+    fr[i] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+    if lim_ZS
+        # --- Zhang-Shu positivity limiter ---
+        ϵθ = 1.0e-16 # small number to avoid division by zero
+
+        fl[i] = zhang_shu_limit(fl[i], u3, u_min, u_max, ϵθ)
+        fr[i] = zhang_shu_limit(fr[i], u4, u_min, u_max, ϵθ)
+    end
 end
 
 @kernel inbounds = true function WENO_semi_discretisation_weno5_KA_1D!(du, fl, fr, v, stag, Δx_, g, O)

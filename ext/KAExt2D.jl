@@ -1,4 +1,4 @@
-@kernel function WENO_flux_KA_2D_x(fl, fr, u, boundary, nx, χ, γ, ζ, ϵ, g, O)
+@kernel function WENO_flux_KA_2D_x(fl, fr, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, g, O)
 
     I = @index(Global, NTuple)
     I = I + O
@@ -44,13 +44,20 @@
         u5 = u[iee, j]
         u6 = u[ieee, j]
 
-        fl[i, j] = FiniteDiffWENO5.weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
-        fr[i, j] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+        fl[i, j] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
+        fr[i, j] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+        if lim_ZS
+            ϵθ = 1.0e-16 # small number to avoid division by zero
+
+            fl[I...] = zhang_shu_limit(fl[I...], u3, u_min, u_max, ϵθ)
+            fr[I...] = zhang_shu_limit(fr[I...], u4, u_min, u_max, ϵθ)
+        end
     end
 end
 
 
-@kernel function WENO_flux_KA_2D_y(fl, fr, u, boundary, ny, χ, γ, ζ, ϵ, g, O)
+@kernel function WENO_flux_KA_2D_y(fl, fr, u, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, g, O)
 
     I = @index(Global, NTuple)
     I = I + O
@@ -96,8 +103,15 @@ end
         u5 = u[i, jee]
         u6 = u[i, jeee]
 
-        fl[i, j] = FiniteDiffWENO5.weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
-        fr[i, j] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+        fl[i, j] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
+        fr[i, j] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+        if lim_ZS
+            ϵθ = 1.0e-16 # small number to avoid division by zero
+
+            fl[I...] = zhang_shu_limit(fl[I...], u3, u_min, u_max, ϵθ)
+            fr[I...] = zhang_shu_limit(fr[I...], u4, u_min, u_max, ϵθ)
+        end
     end
 end
 

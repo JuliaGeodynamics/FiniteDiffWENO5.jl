@@ -11,6 +11,8 @@ abstract type AbstractWENO end
     ϵ::T = eps(T)
     # staggered grid or not (velocities on cell faces or cell centers)
     stag::Bool
+    # use Zhang-Shu limiter
+    lim_ZS::Bool
     # boundary conditions
     boundary::NTuple{N_boundary, Int}
     # multithreading
@@ -42,13 +44,14 @@ Structure containing the Weighted Essentially Non-Oscillatory (WENO) scheme of o
 - `ϵ::T`: Tolerance, fixed to machine precision.
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers).
 - `boundary::NTuple{N_boundary, Int}`: Boundary conditions for each dimension (0: homogeneous Neumann, 1: homogeneous Dirichlet, 2: periodic). Default to homogeneous Neumann.
+- `lim_ZS::Bool`: Whether to use the Zhang-Shu limiter.
 - `multithreading::Bool`: Whether to use multithreading (only for 2D and 3D).
 - `fl::NamedTuple`: Fluxes in the left direction for each dimension.
 - `fr::NamedTuple`: Fluxes in the right direction for each dimension.
 - `du::Array{T, N}`: Semi-discretisation of the advection term.
 - `ut::Array{T, N}`: Temporary array for intermediate calculations using Runge-Kutta.
 """
-function WENOScheme(c0::Array{T, N}; boundary::NTuple = ntuple(i -> 0, N * 2), stag::Bool = false, multithreading::Bool = true) where {T, N}
+function WENOScheme(c0::Array{T, N}; boundary::NTuple = ntuple(i -> 0, N * 2), stag::Bool = false, lim_ZS::Bool = false, multithreading::Bool = true) where {T, N}
 
     # check that boundary conditions are correctly defined
     @assert length(boundary) == 2N "Boundary conditions must be a tuple of length $(2N) for $(N)D data."
@@ -80,5 +83,5 @@ function WENOScheme(c0::Array{T, N}; boundary::NTuple = ntuple(i -> 0, N * 2), s
     TFlux = typeof(fl)
     TArray = typeof(du)
 
-    return WENOScheme{T, TArray, TFlux, N_boundary}(stag = stag, boundary = boundary, multithreading = multithreading, fl = fl, fr = fr, du = du, ut = ut)
+    return WENOScheme{T, TArray, TFlux, N_boundary}(stag = stag, boundary = boundary, lim_ZS = lim_ZS, multithreading = multithreading, fl = fl, fr = fr, du = du, ut = ut)
 end

@@ -1,5 +1,5 @@
-function WENO_flux!(fl, fr, u, weno, nx, ny, nz)
-    @unpack boundary, χ, γ, ζ, ϵ, multithreading = weno
+function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
+    @unpack boundary, χ, γ, ζ, ϵ, multithreading, lim_ZS = weno
 
     bLx = Val(boundary[1])
     bRx = Val(boundary[2])
@@ -8,10 +8,13 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz)
     bLz = Val(boundary[5])
     bRz = Val(boundary[6])
 
+    ϵθ = 1.0e-18  # small number to avoid division by zero for limiter
+
     # fusion of loops for better performance
     @inbounds @maybe_threads multithreading for I in CartesianIndices(fl.x)
         i, j, k = Tuple(I)
 
+        # --- x-direction reconstruction ---
         iwww = left_index(i, 3, nx, bLx)
         iww = left_index(i, 2, nx, bLx)
         iw = left_index(i, 1, nx, bLx)
@@ -29,7 +32,13 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz)
         fl.x[I] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
         fr.x[I] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
+        if lim_ZS
+            fl.x[I] = zhang_shu_limit(fl.x[I], u3, u_min, u_max, ϵθ)
+            fr.x[I] = zhang_shu_limit(fr.x[I], u4, u_min, u_max, ϵθ)
+        end
+
         @inbounds if i < nx + 1
+            # --- y-direction reconstruction ---
             jwww = left_index(j, 3, ny, bLy)
             jww = left_index(j, 2, ny, bLy)
             jw = left_index(j, 1, ny, bLy)
@@ -47,6 +56,12 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz)
             fl.y[I] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
             fr.y[I] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
+            if lim_ZS
+                fl.y[I] = zhang_shu_limit(fl.y[I], u3, u_min, u_max, ϵθ)
+                fr.y[I] = zhang_shu_limit(fr.y[I], u4, u_min, u_max, ϵθ)
+            end
+
+            # --- z-direction reconstruction ---
             kwww = left_index(k, 3, nz, bLz)
             kww = left_index(k, 2, nz, bLz)
             kw = left_index(k, 1, nz, bLz)
@@ -63,10 +78,15 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz)
 
             fl.z[I] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
             fr.z[I] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+            if lim_ZS
+                fl.z[I] = zhang_shu_limit(fl.z[I], u3, u_min, u_max, ϵθ)
+                fr.z[I] = zhang_shu_limit(fr.z[I], u4, u_min, u_max, ϵθ)
+            end
         end
     end
 
-    # last column for y
+    # last column for y (top boundary in j)
     @inbounds @maybe_threads multithreading for i in axes(fr.y, 1)
         @inbounds for k in axes(fr.y, 3)
             j = ny + 1
@@ -87,10 +107,15 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz)
 
             fl.y[i, j, k] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
             fr.y[i, j, k] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+            if lim_ZS
+                fl.y[i, j, k] = zhang_shu_limit(fl.y[i, j, k], u3, u_min, u_max, ϵθ)
+                fr.y[i, j, k] = zhang_shu_limit(fr.y[i, j, k], u4, u_min, u_max, ϵθ)
+            end
         end
     end
 
-    # last column for z
+    # last column for z (top boundary in k)
     @inbounds @maybe_threads multithreading for i in axes(fr.z, 1)
         @inbounds for j in axes(fr.z, 2)
             k = nz + 1
@@ -111,6 +136,11 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz)
 
             fl.z[i, j, k] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
             fr.z[i, j, k] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+            if lim_ZS
+                fl.z[i, j, k] = zhang_shu_limit(fl.z[i, j, k], u3, u_min, u_max, ϵθ)
+                fr.z[i, j, k] = zhang_shu_limit(fr.z[i, j, k], u4, u_min, u_max, ϵθ)
+            end
         end
     end
 

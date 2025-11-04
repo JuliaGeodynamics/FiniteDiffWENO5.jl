@@ -1,8 +1,11 @@
-function WENO_flux!(fl, fr, u, weno, nx)
-    @unpack boundary, χ, γ, ζ, ϵ, multithreading = weno
+function WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
+    @unpack boundary, χ, γ, ζ, ϵ, multithreading, lim_ZS = weno
 
     bL = Val(boundary[1])
     bR = Val(boundary[2])
+
+    # small number to avoid division by zero
+    ϵθ = 1.0e-18
 
     return @inbounds @maybe_threads multithreading for i in axes(fl.x, 1)
         iwww = left_index(i, 3, nx, bL)
@@ -21,6 +24,13 @@ function WENO_flux!(fl, fr, u, weno, nx)
 
         fl.x[i] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
         fr.x[i] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+        if lim_ZS
+            # --- Zhang-Shu positivity limiter ---
+            # separate averages for left and right
+            fl.x[i] = zhang_shu_limit(fl.x[i], u3, u_min, u_max, ϵθ)
+            fr.x[i] = zhang_shu_limit(fr.x[i], u4, u_min, u_max, ϵθ)
+        end
     end
 end
 
