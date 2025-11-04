@@ -125,8 +125,8 @@ end
             u_avg = u3
             θ_fl = min(
                 1.0,
-                abs((u_max - u_avg) / (fl[I] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fl[I] + ϵθ))
+                abs((u_max - u_avg) / (fl[I...] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fl[I...] + ϵθ))
             )
             fl[I...] = θ_fl * (fl[I...] - u_avg) + u_avg
 
