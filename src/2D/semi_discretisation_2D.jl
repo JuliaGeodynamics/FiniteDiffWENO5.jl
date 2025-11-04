@@ -1,77 +1,125 @@
-function WENO_flux!(fl, fr, u, weno, nx, ny)
-    @unpack boundary, χ, γ, ζ, ϵ, multithreading = weno
+function WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
+    @unpack boundary, χ, γ, ζ, ϵ, multithreading, lim_ZS = weno
 
     bLx = Val(boundary[1])
     bRx = Val(boundary[2])
     bLy = Val(boundary[3])
     bRy = Val(boundary[4])
 
-    # fusion of loops for better performance
+    ϵθ = 1e-18  # small number to avoid division by zero for limiter
+
     @inbounds @maybe_threads multithreading for I in CartesianIndices(fl.x)
         i, j = Tuple(I)
 
+        # --- x-direction reconstruction ---
         iwww = left_index(i, 3, nx, bLx)
-        iww = left_index(i, 2, nx, bLx)
-        iw = left_index(i, 1, nx, bLx)
-        ie = right_index(i, 0, nx, bRx)
-        iee = right_index(i, 1, nx, bRx)
+        iww  = left_index(i, 2, nx, bLx)
+        iw   = left_index(i, 1, nx, bLx)
+        ie   = right_index(i, 0, nx, bRx)
+        iee  = right_index(i, 1, nx, bRx)
         ieee = right_index(i, 2, nx, bRx)
 
-        u1 = u[iwww, j]
-        u2 = u[iww, j]
-        u3 = u[iw, j]
-        u4 = u[ie, j]
-        u5 = u[iee, j]
-        u6 = u[ieee, j]
+        u1 = u[iwww, j]; u2 = u[iww, j]; u3 = u[iw, j]
+        u4 = u[ie, j]; u5 = u[iee, j]; u6 = u[ieee, j]
 
         fl.x[I] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
         fr.x[I] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
-        @inbounds if i < nx + 1
+        if lim_ZS
+            u_avg = u3
+
+            θ_fl = min(
+                1.0,
+                abs((u_max - u_avg) / (fl.x[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fl.x[I] + ϵθ))
+            )
+            fl.x[I] = θ_fl * (fl.x[I] - u_avg) + u_avg
+
+            u_avg = u4
+
+            θ_fr = min(
+                1.0,
+                abs((u_max - u_avg) / (fr.x[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fr.x[I] + ϵθ))
+            )
+            fr.x[I] = θ_fr * (fr.x[I] - u_avg) + u_avg
+        end
+
+        # --- y-direction reconstruction ---
+        if i <= nx  # avoid last column (handled separately)
             jwww = left_index(j, 3, ny, bLy)
-            jww = left_index(j, 2, ny, bLy)
-            jw = left_index(j, 1, ny, bLy)
-            je = right_index(j, 0, ny, bRy)
-            jee = right_index(j, 1, ny, bRy)
+            jww  = left_index(j, 2, ny, bLy)
+            jw   = left_index(j, 1, ny, bLy)
+            je   = right_index(j, 0, ny, bRy)
+            jee  = right_index(j, 1, ny, bRy)
             jeee = right_index(j, 2, ny, bRy)
 
-            u1 = u[i, jwww]
-            u2 = u[i, jww]
-            u3 = u[i, jw]
-            u4 = u[i, je]
-            u5 = u[i, jee]
-            u6 = u[i, jeee]
+            u1 = u[i, jwww]; u2 = u[i, jww]; u3 = u[i, jw]
+            u4 = u[i, je]; u5 = u[i, jee]; u6 = u[i, jeee]
 
             fl.y[I] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
             fr.y[I] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+            if lim_ZS
+                u_avg = u3
+
+                θ_fl = min(
+                    1.0,
+                    abs((u_max - u_avg) / (fl.y[I] - u_avg + ϵθ)),
+                    abs((u_avg - u_min) / (u_avg - fl.y[I] + ϵθ))
+                )
+                fl.y[I] = θ_fl * (fl.y[I] - u_avg) + u_avg
+
+                u_avg = u4
+
+                θ_fr = min(
+                    1.0,
+                    abs((u_max - u_avg) / (fr.y[I] - u_avg + ϵθ)),
+                    abs((u_avg - u_min) / (u_avg - fr.y[I] + ϵθ))
+                )
+                fr.y[I] = θ_fr * (fr.y[I] - u_avg) + u_avg
+            end
         end
     end
 
-    # last column for y
-    @inbounds for i in axes(fr.y, 1)
+    # Handle last row for y-direction (top boundary)
+    @inbounds @maybe_threads multithreading for i in axes(fl.y, 1)
         j = ny + 1
 
         jwww = left_index(j, 3, ny, bLy)
-        jww = left_index(j, 2, ny, bLy)
-        jw = left_index(j, 1, ny, bLy)
-        je = right_index(j, 0, ny, bRy)
-        jee = right_index(j, 1, ny, bRy)
+        jww  = left_index(j, 2, ny, bLy)
+        jw   = left_index(j, 1, ny, bLy)
+        je   = right_index(j, 0, ny, bRy)
+        jee  = right_index(j, 1, ny, bRy)
         jeee = right_index(j, 2, ny, bRy)
 
-        u1 = u[i, jwww]
-        u2 = u[i, jww]
-        u3 = u[i, jw]
-        u4 = u[i, je]
-        u5 = u[i, jee]
-        u6 = u[i, jeee]
+        u1 = u[i, jwww]; u2 = u[i, jww]; u3 = u[i, jw]
+        u4 = u[i, je]; u5 = u[i, jee]; u6 = u[i, jeee]
 
         fl.y[i, j] = weno5_reconstruction_upwind(u1, u2, u3, u4, u5, χ, γ, ζ, ϵ)
         fr.y[i, j] = weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
+
+        if lim_ZS
+            u_avg = u3
+
+            θ_fl = min(
+                1.0,
+                abs((u_max - u_avg) / (fl.y[i, j] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fl.y[i, j] + ϵθ))
+            )
+            fl.y[i, j] = θ_fl * (fl.y[i, j] - u_avg) + u_avg
+
+            u_avg = u4
+
+            θ_fr = min(
+                1.0,
+                abs((u_max - u_avg) / (fr.y[i, j] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fr.y[i, j] + ϵθ))
+            )
+            fr.y[i, j] = θ_fr * (fr.y[i, j] - u_avg) + u_avg
+        end
     end
-
-    return nothing
 end
-
 
 function semi_discretisation_weno5!(du::T, v, weno::WENOScheme, Δx_, Δy_) where {T <: AbstractArray{<:Real, 2}}
 
