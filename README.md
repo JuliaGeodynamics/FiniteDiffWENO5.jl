@@ -108,3 +108,10 @@ end
 Which produces the following result:
 
 ![](/docs/src/assets/1D_linear_advection.png)
+
+
+## Funding & author
+
+The development of this package was supported by the TRIGGER project funded by the German Federal Ministry for Economic Affairs and Energy (BMWK).
+
+Author: Hugo Dominguez (hdomingu@univ-mainz.de).
