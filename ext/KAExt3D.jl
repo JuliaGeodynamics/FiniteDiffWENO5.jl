@@ -121,6 +121,8 @@ end
         fr[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
         if lim_ZS
+            ϵθ = 1.0e-16 # small number to avoid division by zero
+
             # left interface (from left stencil)
             u_avg = u3
             θ_fl = min(
@@ -192,23 +194,25 @@ end
         fr[i, j, k] = FiniteDiffWENO5.weno5_reconstruction_downwind(u2, u3, u4, u5, u6, χ, γ, ζ, ϵ)
 
         if lim_ZS
+            ϵθ = 1.0e-16 # small number to avoid division by zero
+
             # left interface (from left stencil)
             u_avg = u3
             θ_fl = min(
                 1.0,
-                abs((u_max - u_avg) / (fl[I] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fl[I] + ϵθ))
+                abs((u_max - u_avg) / (fl[I...] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fl[I...] + ϵθ))
             )
-            fl[I] = θ_fl * (fl[I] - u_avg) + u_avg
+            fl[I...] = θ_fl * (fl[I...] - u_avg) + u_avg
 
             # right interface (from right stencil)
             u_avg = u4
             θ_fr = min(
                 1.0,
-                abs((u_max - u_avg) / (fr[I] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fr[I] + ϵθ))
+                abs((u_max - u_avg) / (fr[I...] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fr[I...] + ϵθ))
             )
-            fr[I] = θ_fr * (fr[I] - u_avg) + u_avg
+            fr[I...] = θ_fr * (fr[I...] - u_avg) + u_avg
         end
     end
 end
