@@ -75,7 +75,8 @@ include("KAExt3D.jl")
                v::NamedTuple{(:x,), <:Tuple{<:AbstractField{<:Real, 1}}},
                weno::FiniteDiffWENO5.WENOScheme,
                Δt, Δx,
-               grid::StructuredGrid, arch) where {T_field <: AbstractField{<:Real, 1}}
+               grid::StructuredGrid, arch;
+               u_min = 0.0, u_max = 0.0) where {T_field <: AbstractField{<:Real, 1}}
 
 Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method with WENO5 spatial discretization using Chmy.jl fields in 1D.
 
@@ -86,6 +87,9 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `Δt`: Time step size.
 - `Δx`: Spatial grid size.
 - `grid::StructuredGrid`: Computational grid from Chmy.
+- `arch::Backend`: The KernelAbstractions backend in use (e.g., CPU(), CUDABackend(), etc.).
+- `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
+- `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
 function WENO_step!(u::T_field, v::NamedTuple{(:x,), <:Tuple{<:AbstractField{<:Real, 1}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0) where {T_field <: AbstractField{<:Real, 1}}
 
@@ -124,7 +128,8 @@ end
                v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractField{<:Real}, 2}}},
                weno::FiniteDiffWENO5.WENOScheme,
                Δt, Δx,
-               grid::StructuredGrid, arch) where T_field <: AbstractField{<:Real} where names
+               grid::StructuredGrid, arch;
+               u_min = 0.0, u_max = 0.0) where T_field <: AbstractField{<:Real} where names
 
 Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method with WENO5 spatial discretization using Chmy.jl fields in 2D.
 
@@ -135,6 +140,9 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `Δt`: Time step size.
 - `Δx`: Spatial grid size.
 - `grid::StructuredGrid`: Computational grid from Chmy.
+- `arch::Backend`: The KernelAbstractions backend in use (e.g., CPU(), CUDABackend(), etc.).
+- `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
+- `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
 function WENO_step!(u::T_field, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractField{<:Real}, 2}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0) where {T_field <: AbstractField{<:Real, 2}}
 
@@ -179,7 +187,8 @@ end
                v::NamedTuple{names, <:Tuple{Vararg{AbstractField{<:Real}, 2}}},
                weno::FiniteDiffWENO5.WENOScheme,
                Δt, Δx, Δy, Δz,
-               grid::StructuredGrid, arch) where T_field <: AbstractArray{<:Real, 3}
+               grid::StructuredGrid, arch;
+               u_min = 0.0, u_max = 0.0) where T_field <: AbstractArray{<:Real, 3}
 
 Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method with WENO5 spatial discretization using Chmy.jl fields in 3D.
 
@@ -192,6 +201,9 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `Δy`: Spatial grid size.
 - `Δz`: Spatial grid size.
 - `grid::StructuredGrid`: Computational grid from Chmy.
+- `arch::Backend`: The KernelAbstractions backend in use (e.g., CPU(), CUDABackend(), etc.).
+- `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
+- `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
 function WENO_step!(u::T_field, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractField{<:Real}, 3}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, Δz, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0) where {T_field <: AbstractArray{<:Real, 3}}
 

@@ -76,7 +76,8 @@ include("KAExt3D.jl")
     WENO_step!(u::T_KA,
                v::NamedTuple{names, <:Tuple{<:T_KA}},
                weno::FiniteDiffWENO5.WENOScheme, Δt, Δx,
-               backend::Backend) where T_KA <: AbstractField{<:Real} where names
+               backend::Backend;
+               u_min = 0.0, u_max = 0.0) where T_KA <: AbstractField{<:Real} where names
 
 Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method with WENO5 spatial discretization using Chmy.jl fields in 1D.
 
@@ -87,6 +88,8 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `Δt`: The time step size.
 - `Δx`: The spatial grid size.
 - `backend::Backend`: The KernelAbstractions backend in use (e.g., CPU(), CUDABackend(), etc.).
+- `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
+- `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
 function WENO_step!(u::T_KA, v::NamedTuple{(:x,), <:Tuple{<:AbstractArray{<:Real}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, backend::Backend; u_min = 0.0, u_max = 0.0) where {T_KA <: AbstractVector{<:Real}}
 
@@ -127,7 +130,8 @@ end
                v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<:Real}, 2}}},
                weno::FiniteDiffWENO5.WENOScheme,
                Δt, Δx, Δy,
-               backend::Backend) where T_field <: AbstractField{<:Real} where names
+               backend::Backend;
+               u_min = 0.0, u_max = 0.0) where T_field <: AbstractField{<:Real} where names
 
 Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method with WENO5 spatial discretization using Chmy.jl fields in 2D.
 
@@ -139,6 +143,8 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `Δx`: Spatial grid size.
 - `Δy`: Spatial grid size.
 - `backend::Backend`: KernelAbstractions backend in use (e.g., CPU(), CUDABackend(), etc.).
+- `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
+- `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
 function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<:Real}, 2}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, backend::Backend; u_min = 0.0, u_max = 0.0) where {T_KA <: AbstractArray{<:Real, 2}}
 
@@ -191,7 +197,8 @@ end
                v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractArray{<:Real}, 3}}},
                weno::FiniteDiffWENO5.WENOScheme,
                Δt, Δx, Δy, Δz,
-               backend::Backend) where T_KA <: AbstractArray{<:Real, 3}
+               backend::Backend;
+               u_min = 0.0, u_max = 0.0) where T_KA <: AbstractArray{<:Real, 3}
 
 Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method with WENO5 spatial discretization using Chmy.jl fields in 3D.
 

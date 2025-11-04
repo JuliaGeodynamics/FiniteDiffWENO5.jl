@@ -2,7 +2,8 @@
     WENO_step!(u::T,
                v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<:Real}, 2}}},
                weno::WENOScheme,
-               Δt, Δx, Δy) where {T <: AbstractArray{<:Real, 2}}
+               Δt, Δx, Δy;
+               u_min = 0.0, u_max = 1.0) where {T <: AbstractArray{<:Real, 2}}
 
 Advance the solution `u` by one time step using the 3rd-order SSP Runge-Kutta method with WENO5-Z as the spatial discretization in 2D.
 
@@ -13,6 +14,8 @@ Advance the solution `u` by one time step using the 3rd-order SSP Runge-Kutta me
 - `Δt`: Time step size.
 - `Δx`: Spatial grid size in the x-direction.
 - `Δy`: Spatial grid size in the y-direction.
+- `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
+- `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 
 Citation: Borges et al. 2008: "An improved weighted essentially non-oscillatory scheme for hyperbolic conservation laws"
           doi:10.1016/j.jcp.2007.11.038
