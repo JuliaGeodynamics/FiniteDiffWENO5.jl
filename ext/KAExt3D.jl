@@ -52,19 +52,19 @@
             u_avg = u3
             θ_fl = min(
                 1.0,
-                abs((u_max - u_avg) / (fl.x[I] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fl.x[I] + ϵθ))
+                abs((u_max - u_avg) / (fl[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fl[I] + ϵθ))
             )
-            fl.x[I] = θ_fl * (fl.x[I] - u_avg) + u_avg
+            fl[I] = θ_fl * (fl[I] - u_avg) + u_avg
 
             # right interface (from right stencil)
             u_avg = u4
             θ_fr = min(
                 1.0,
-                abs((u_max - u_avg) / (fr.x[I] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fr.x[I] + ϵθ))
+                abs((u_max - u_avg) / (fr[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fr[I] + ϵθ))
             )
-            fr.x[I] = θ_fr * (fr.x[I] - u_avg) + u_avg
+            fr[I] = θ_fr * (fr[I] - u_avg) + u_avg
         end
     end
 end
@@ -123,19 +123,19 @@ end
             u_avg = u3
             θ_fl = min(
                 1.0,
-                abs((u_max - u_avg) / (fl.y[I] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fl.y[I] + ϵθ))
+                abs((u_max - u_avg) / (fl[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fl[I] + ϵθ))
             )
-            fl.y[I] = θ_fl * (fl.y[I] - u_avg) + u_avg
+            fl[I] = θ_fl * (fl[I] - u_avg) + u_avg
 
             # right interface (from right stencil)
             u_avg = u4
             θ_fr = min(
                 1.0,
-                abs((u_max - u_avg) / (fr.y[I] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fr.y[I] + ϵθ))
+                abs((u_max - u_avg) / (fr[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fr[I] + ϵθ))
             )
-            fr.y[I] = θ_fr * (fr.y[I] - u_avg) + u_avg
+            fr[I] = θ_fr * (fr[I] - u_avg) + u_avg
         end
     end
 end
@@ -194,19 +194,19 @@ end
             u_avg = u3
             θ_fl = min(
                 1.0,
-                abs((u_max - u_avg) / (fl.z[I] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fl.z[I] + ϵθ))
+                abs((u_max - u_avg) / (fl[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fl[I] + ϵθ))
             )
-            fl.z[I] = θ_fl * (fl.z[I] - u_avg) + u_avg
+            fl[I] = θ_fl * (fl[I] - u_avg) + u_avg
 
             # right interface (from right stencil)
             u_avg = u4
             θ_fr = min(
                 1.0,
-                abs((u_max - u_avg) / (fr.z[I] - u_avg + ϵθ)),
-                abs((u_avg - u_min) / (u_avg - fr.z[I] + ϵθ))
+                abs((u_max - u_avg) / (fr[I] - u_avg + ϵθ)),
+                abs((u_avg - u_min) / (u_avg - fr[I] + ϵθ))
             )
-            fr.z[I] = θ_fr * (fr.z[I] - u_avg) + u_avg
+            fr[I] = θ_fr * (fr[I] - u_avg) + u_avg
         end
     end
 end

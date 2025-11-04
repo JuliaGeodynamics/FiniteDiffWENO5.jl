@@ -51,21 +51,21 @@
 
         θ_fl = min(
             1.0,
-            abs((u_max - u_avg)/(fl.x[i] - u_avg + ϵθ)),
-            abs((u_avg - u_min)/(u_avg - fl.x[i] + ϵθ))
+            abs((u_max - u_avg)/(fl[i] - u_avg + ϵθ)),
+            abs((u_avg - u_min)/(u_avg - fl[i] + ϵθ))
         )
         # apply limiter
-        fl.x[i] = θ_fl * (fl.x[i] - u_avg) + u_avg
+        fl[i] = θ_fl * (fl[i] - u_avg) + u_avg
 
         # separate averages for left and right
         u_avg = u4
 
         θ_fr = min(
             1.0,
-            abs((u_max - u_avg)/(fr.x[i] - u_avg + ϵθ)),
-            abs((u_avg - u_min)/(u_avg - fr.x[i] + ϵθ))
+            abs((u_max - u_avg)/(fr[i] - u_avg + ϵθ)),
+            abs((u_avg - u_min)/(u_avg - fr[i] + ϵθ))
         )
-        fr.x[i] = θ_fr * (fr.x[i] - u_avg) + u_avg
+        fr[i] = θ_fr * (fr[i] - u_avg) + u_avg
     end
 end
 
