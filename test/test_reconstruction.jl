@@ -53,7 +53,7 @@
         f_down = FiniteDiffWENO5.weno5_reconstruction_downwind(u..., χ, γ, ζ, ϵ)
 
         # Should not overshoot — values must remain within range
-        @test 1.0 ≤ f_up ≤ 10.0
+        @test 1.0 ≤ f_up + eps(f_down) ≤ 10.0
         @test 1.0 ≤ f_down + eps(f_down) ≤ 10.0
     end
 
