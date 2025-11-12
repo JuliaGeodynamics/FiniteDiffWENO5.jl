@@ -195,8 +195,8 @@ end
 
 
 function upwind_update_3D!(
-    u, v, weno, nx, ny, nz, Δx_, Δy_, Δz_, Δt
-)
+        u, v, weno, nx, ny, nz, Δx_, Δy_, Δz_, Δt
+    )
     @unpack boundary, stag, multithreading = weno
 
     bLx = Val(boundary[1])
@@ -218,21 +218,33 @@ function upwind_update_3D!(
 
         if stag
             u[i, j, k] -= Δt * (
-                (max(v.x[i, j, k], 0) * (u[i, j, k] - u[iLx, j, k]) +
-                 min(v.x[iRx, j, k], 0) * (u[iRx, j, k] - u[i, j, k])) * Δx_ +
-                (max(v.y[i, j, k], 0) * (u[i, j, k] - u[i, jLy, k]) +
-                 min(v.y[i, jRy, k], 0) * (u[i, jRy, k] - u[i, j, k])) * Δy_ +
-                (max(v.z[i, j, k], 0) * (u[i, j, k] - u[i, j, kLz]) +
-                 min(v.z[i, j, kRz], 0) * (u[i, j, kRz] - u[i, j, k])) * Δz_
+                (
+                    max(v.x[i, j, k], 0) * (u[i, j, k] - u[iLx, j, k]) +
+                        min(v.x[iRx, j, k], 0) * (u[iRx, j, k] - u[i, j, k])
+                ) * Δx_ +
+                    (
+                    max(v.y[i, j, k], 0) * (u[i, j, k] - u[i, jLy, k]) +
+                        min(v.y[i, jRy, k], 0) * (u[i, jRy, k] - u[i, j, k])
+                ) * Δy_ +
+                    (
+                    max(v.z[i, j, k], 0) * (u[i, j, k] - u[i, j, kLz]) +
+                        min(v.z[i, j, kRz], 0) * (u[i, j, kRz] - u[i, j, k])
+                ) * Δz_
             )
         else
             u[i, j, k] -= Δt * (
-                (max(v.x[i, j, k], 0) * (u[i, j, k] - u[iLx, j, k]) +
-                 min(v.x[i, j, k], 0) * (u[iRx, j, k] - u[i, j, k])) * Δx_ +
-                (max(v.y[i, j, k], 0) * (u[i, j, k] - u[i, jLy, k]) +
-                 min(v.y[i, j, k], 0) * (u[i, jRy, k] - u[i, j, k])) * Δy_ +
-                (max(v.z[i, j, k], 0) * (u[i, j, k] - u[i, j, kLz]) +
-                 min(v.z[i, j, k], 0) * (u[i, j, kRz] - u[i, j, k])) * Δz_
+                (
+                    max(v.x[i, j, k], 0) * (u[i, j, k] - u[iLx, j, k]) +
+                        min(v.x[i, j, k], 0) * (u[iRx, j, k] - u[i, j, k])
+                ) * Δx_ +
+                    (
+                    max(v.y[i, j, k], 0) * (u[i, j, k] - u[i, jLy, k]) +
+                        min(v.y[i, j, k], 0) * (u[i, jRy, k] - u[i, j, k])
+                ) * Δy_ +
+                    (
+                    max(v.z[i, j, k], 0) * (u[i, j, k] - u[i, j, kLz]) +
+                        min(v.z[i, j, k], 0) * (u[i, j, kRz] - u[i, j, k])
+                ) * Δz_
             )
         end
     end

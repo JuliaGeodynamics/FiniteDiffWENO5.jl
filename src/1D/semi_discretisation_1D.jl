@@ -1,4 +1,3 @@
-
 function WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
     @unpack boundary, χ, γ, ζ, ϵ, multithreading, lim_ZS = weno
 
@@ -83,12 +82,12 @@ function upwind_update_1D!(u, v, weno, nx, Δx_, Δt)
         if stag
             u[i] -= Δt * (
                 max(v.x[i], 0) * (u[i] - u[iL]) +
-                min(v.x[iR], 0) * (u[iR] - u[i])
+                    min(v.x[iR], 0) * (u[iR] - u[i])
             ) * Δx_
         else
             u[i] -= Δt * (
                 max(v.x[i], 0) * (u[i] - u[iL]) +
-                min(v.x[i], 0) * (u[iR] - u[i])
+                    min(v.x[i], 0) * (u[iR] - u[i])
             ) * Δx_
         end
     end

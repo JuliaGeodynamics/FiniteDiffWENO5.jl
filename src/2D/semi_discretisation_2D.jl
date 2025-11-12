@@ -130,8 +130,8 @@ function semi_discretisation_weno5!(du::T, v, weno::WENOScheme, Δx_, Δy_) wher
 end
 
 function upwind_update_2D!(
-    u, v, weno, nx, ny, Δx_, Δy_, Δt
-)
+        u, v, weno, nx, ny, Δx_, Δy_, Δt
+    )
     @unpack boundary, stag, multithreading = weno
 
     bLx = Val(boundary[1])
@@ -149,17 +149,25 @@ function upwind_update_2D!(
 
         if stag
             u[i, j] -= Δt * (
-                (max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +
-                 min(v.x[iRx, j], 0) * (u[iRx, j] - u[i, j])) * Δx_ +
-                (max(v.y[i, j], 0) * (u[i, j] - u[i, jLy]) +
-                 min(v.y[i, jRy], 0) * (u[i, jRy] - u[i, j])) * Δy_
+                (
+                    max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +
+                        min(v.x[iRx, j], 0) * (u[iRx, j] - u[i, j])
+                ) * Δx_ +
+                    (
+                    max(v.y[i, j], 0) * (u[i, j] - u[i, jLy]) +
+                        min(v.y[i, jRy], 0) * (u[i, jRy] - u[i, j])
+                ) * Δy_
             )
         else
             u[i, j] -= Δt * (
-                (max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +
-                 min(v.x[i, j], 0) * (u[iRx, j] - u[i, j])) * Δx_ +
-                (max(v.y[i, j], 0) * (u[i, j] - u[i, jLy]) +
-                 min(v.y[i, j], 0) * (u[i, jRy] - u[i, j])) * Δy_
+                (
+                    max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +
+                        min(v.x[i, j], 0) * (u[iRx, j] - u[i, j])
+                ) * Δx_ +
+                    (
+                    max(v.y[i, j], 0) * (u[i, j] - u[i, jLy]) +
+                        min(v.y[i, j], 0) * (u[i, jRy] - u[i, j])
+                ) * Δy_
             )
         end
     end
