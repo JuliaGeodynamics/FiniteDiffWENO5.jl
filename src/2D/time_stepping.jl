@@ -27,7 +27,7 @@ function WENO_step!(u::T, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<
 
     @unpack ut, du, stag, fl, fr, multithreading, upwind_mode = weno
 
-    return if !upwind_mode
+    if !upwind_mode
         WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
         semi_discretisation_weno5!(du, v, weno, Δx_, Δy_)
 
@@ -53,5 +53,5 @@ function WENO_step!(u::T, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<
         upwind_update_2D!(u, v, weno, nx, ny, Δx_, Δy_, Δt)
     end
 
-
+    return nothing
 end

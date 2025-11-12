@@ -26,7 +26,7 @@ function WENO_step!(u::T, v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}}, weno:
 
     @unpack ut, du, stag, fl, fr, multithreading, upwind_mode = weno
 
-    if upwind_mode
+    if !upwind_mode
         WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
         semi_discretisation_weno5!(du, v, weno, Δx_)
 

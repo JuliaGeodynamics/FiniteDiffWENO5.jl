@@ -100,7 +100,7 @@
         u = KernelAbstractions.zeros(backend, Float64, nx, ny)
         copyto!(u, u0)
 
-        weno = WENOScheme(u, backend; boundary = (2, 2, 2, 2), stag = stag, multithreading = true)
+        weno = WENOScheme(u, backend; boundary = (2, 2, 2, 2), stag = stag)
 
         if stag
             v = (;
