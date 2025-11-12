@@ -128,3 +128,49 @@ function semi_discretisation_weno5!(du::T, v, weno::WENOScheme, Δx_, Δy_) wher
 
     return nothing
 end
+
+function upwind_update_2D!(
+        u, v, weno, nx, ny, Δx_, Δy_, Δt
+    )
+    @unpack boundary, stag, multithreading = weno
+
+    bLx = Val(boundary[1])
+    bRx = Val(boundary[2])
+    bLy = Val(boundary[3])
+    bRy = Val(boundary[4])
+
+    @inbounds @maybe_threads multithreading for I in CartesianIndices(u)
+        i, j = Tuple(I)
+
+        iLx = left_index(i - 1, 0, nx, bLx)
+        iRx = right_index(i + 1, 0, nx, bRx)
+        jLy = left_index(j - 1, 0, ny, bLy)
+        jRy = right_index(j + 1, 0, ny, bRy)
+
+        if stag
+            u[i, j] -= Δt * (
+                (
+                    max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +
+                        min(v.x[iRx, j], 0) * (u[iRx, j] - u[i, j])
+                ) * Δx_ +
+                    (
+                    max(v.y[i, j], 0) * (u[i, j] - u[i, jLy]) +
+                        min(v.y[i, jRy], 0) * (u[i, jRy] - u[i, j])
+                ) * Δy_
+            )
+        else
+            u[i, j] -= Δt * (
+                (
+                    max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +
+                        min(v.x[i, j], 0) * (u[iRx, j] - u[i, j])
+                ) * Δx_ +
+                    (
+                    max(v.y[i, j], 0) * (u[i, j] - u[i, jLy]) +
+                        min(v.y[i, j], 0) * (u[i, jRy] - u[i, j])
+                ) * Δy_
+            )
+        end
+    end
+
+    return u
+end

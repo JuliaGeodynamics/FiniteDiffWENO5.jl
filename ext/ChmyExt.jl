@@ -22,7 +22,7 @@ Create a WENO scheme structure for the given field `u` on the specified `grid` u
 - `boundary::NTuple{2N, Int}`: Tuple specifying the boundary conditions for each dimension (0: homogeneous Neumann, 1: homogeneous Dirichlet, 2: periodic). Default is periodic (2).
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers).
 """
-function WENOScheme(c0::AbstractField{T, N}, grid::StructuredGrid; boundary::NTuple = (2, 2), stag::Bool = true, lim_ZS::Bool = false, kwargs...) where {T, N}
+function WENOScheme(c0::AbstractField{T, N}, grid::StructuredGrid; boundary::NTuple = (2, 2), stag::Bool = true, lim_ZS::Bool = false, upwind_mode = false) where {T, N}
 
     # check that boundary conditions are correctly defined
     @assert length(boundary) == 2N "Boundary conditions must be a tuple of length $(2N) for $(N)D data."
@@ -44,7 +44,7 @@ function WENOScheme(c0::AbstractField{T, N}, grid::StructuredGrid; boundary::NTu
     TFlux = typeof(fl)
     TArray = typeof(du)
 
-    return WENOScheme{T, TArray, TFlux, N_boundary}(stag = stag, boundary = boundary, multithreading = multithreading, lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut)
+    return WENOScheme{T, TArray, TFlux, N_boundary}(stag = stag, boundary = boundary, multithreading = multithreading, lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut, upwind_mode = upwind_mode)
 end
 
 function WENOScheme(c0::AbstractField; kwargs...)
@@ -103,22 +103,27 @@ function WENO_step!(u::T_field, v::NamedTuple{(:x,), <:Tuple{<:AbstractField{<:R
     nx = grid.axes[1].length
     Δx_ = inv(Δx)
 
-    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ = weno
+    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode = weno
 
-    launch(arch, grid, WENO_flux_KA_1D => (fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_semi_discretisation_weno5_KA_1D! => (du, fl, fr, v, stag, Δx_, grid))
+    if !upwind_mode
 
-    interior(ut) .= @muladd interior(u) .- Δt .* interior(du)
+        launch(arch, grid, WENO_flux_KA_1D => (fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_semi_discretisation_weno5_KA_1D! => (du, fl, fr, v, stag, Δx_, grid))
 
-    launch(arch, grid, WENO_flux_KA_1D => (fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_semi_discretisation_weno5_KA_1D! => (du, fl, fr, v, stag, Δx_, grid))
+        interior(ut) .= @muladd interior(u) .- Δt .* interior(du)
 
-    interior(ut) .= @muladd 0.75 .* interior(u) .+ 0.25 .* interior(ut) .- 0.25 .* Δt .* interior(du)
+        launch(arch, grid, WENO_flux_KA_1D => (fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_semi_discretisation_weno5_KA_1D! => (du, fl, fr, v, stag, Δx_, grid))
 
-    launch(arch, grid, WENO_flux_KA_1D => (fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_semi_discretisation_weno5_KA_1D! => (du, fl, fr, v, stag, Δx_, grid))
+        interior(ut) .= @muladd 0.75 .* interior(u) .+ 0.25 .* interior(ut) .- 0.25 .* Δt .* interior(du)
 
-    interior(u) .= @muladd inv(3.0) .* interior(u) .+ 2.0 / 3.0 .* interior(ut) .- 2.0 / 3.0 .* Δt .* interior(du)
+        launch(arch, grid, WENO_flux_KA_1D => (fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_semi_discretisation_weno5_KA_1D! => (du, fl, fr, v, stag, Δx_, grid))
+
+        interior(u) .= @muladd inv(3.0) .* interior(u) .+ 2.0 / 3.0 .* interior(ut) .- 2.0 / 3.0 .* Δt .* interior(du)
+    else
+        launch(arch, grid, upwind_update_KA_1D! => (u, v, nx, Δx_, Δt, stag, boundary, grid))
+    end
 
     return nothing
 end
@@ -159,25 +164,29 @@ function WENO_step!(u::T_field, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractF
     Δx_ = inv(Δx)
     Δy_ = inv(Δy)
 
-    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ = weno
+    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode = weno
 
-    launch(arch, grid, WENO_flux_KA_2D_x => (fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_flux_KA_2D_y => (fl.y, fr.y, u, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_semi_discretisation_weno5_KA_2D! => (du, fl, fr, v, stag, Δx_, Δy_, grid))
+    if !upwind_mode
+        launch(arch, grid, WENO_flux_KA_2D_x => (fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_flux_KA_2D_y => (fl.y, fr.y, u, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_semi_discretisation_weno5_KA_2D! => (du, fl, fr, v, stag, Δx_, Δy_, grid))
 
-    interior(ut) .= @muladd interior(u) .- Δt .* interior(du)
+        interior(ut) .= @muladd interior(u) .- Δt .* interior(du)
 
-    launch(arch, grid, WENO_flux_KA_2D_x => (fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_flux_KA_2D_y => (fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_semi_discretisation_weno5_KA_2D! => (du, fl, fr, v, stag, Δx_, Δy_, grid))
+        launch(arch, grid, WENO_flux_KA_2D_x => (fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_flux_KA_2D_y => (fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_semi_discretisation_weno5_KA_2D! => (du, fl, fr, v, stag, Δx_, Δy_, grid))
 
-    interior(ut) .= @muladd 0.75 .* interior(u) .+ 0.25 .* interior(ut) .- 0.25 .* Δt .* interior(du)
+        interior(ut) .= @muladd 0.75 .* interior(u) .+ 0.25 .* interior(ut) .- 0.25 .* Δt .* interior(du)
 
-    launch(arch, grid, WENO_flux_KA_2D_x => (fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_flux_KA_2D_y => (fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_semi_discretisation_weno5_KA_2D! => (du, fl, fr, v, stag, Δx_, Δy_, grid))
+        launch(arch, grid, WENO_flux_KA_2D_x => (fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_flux_KA_2D_y => (fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_semi_discretisation_weno5_KA_2D! => (du, fl, fr, v, stag, Δx_, Δy_, grid))
 
-    interior(u) .= @muladd inv(3.0) .* interior(u) .+ 2.0 / 3.0 .* interior(ut) .- 2.0 / 3.0 .* Δt .* interior(du)
+        interior(u) .= @muladd inv(3.0) .* interior(u) .+ 2.0 / 3.0 .* interior(ut) .- 2.0 / 3.0 .* Δt .* interior(du)
+    else
+        launch(arch, grid, upwind_update_KA_2D! => (u, v, nx, ny, Δx_, Δy_, Δt, stag, boundary, grid))
+    end
 
     return nothing
 end
@@ -223,28 +232,32 @@ function WENO_step!(u::T_field, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstr
     Δy_ = inv(Δy)
     Δz_ = inv(Δz)
 
-    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ = weno
+    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode = weno
 
-    launch(arch, grid, WENO_flux_KA_3D_x => (fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_flux_KA_3D_y => (fl.y, fr.y, u, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_flux_KA_3D_z => (fl.z, fr.z, u, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_semi_discretisation_weno5_KA_3D! => (du, fl, fr, v, stag, Δx_, Δy_, Δz_, grid))
+    if !upwind_mode
+        launch(arch, grid, WENO_flux_KA_3D_x => (fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_flux_KA_3D_y => (fl.y, fr.y, u, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_flux_KA_3D_z => (fl.z, fr.z, u, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_semi_discretisation_weno5_KA_3D! => (du, fl, fr, v, stag, Δx_, Δy_, Δz_, grid))
 
-    interior(ut) .= @muladd interior(u) .- Δt .* interior(du)
+        interior(ut) .= @muladd interior(u) .- Δt .* interior(du)
 
-    launch(arch, grid, WENO_flux_KA_3D_x => (fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_flux_KA_3D_y => (fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_flux_KA_3D_z => (fl.z, fr.z, ut, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_semi_discretisation_weno5_KA_3D! => (du, fl, fr, v, stag, Δx_, Δy_, Δz_, grid))
+        launch(arch, grid, WENO_flux_KA_3D_x => (fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_flux_KA_3D_y => (fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_flux_KA_3D_z => (fl.z, fr.z, ut, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_semi_discretisation_weno5_KA_3D! => (du, fl, fr, v, stag, Δx_, Δy_, Δz_, grid))
 
-    interior(ut) .= @muladd 0.75 .* interior(u) .+ 0.25 .* interior(ut) .- 0.25 .* Δt .* interior(du)
+        interior(ut) .= @muladd 0.75 .* interior(u) .+ 0.25 .* interior(ut) .- 0.25 .* Δt .* interior(du)
 
-    launch(arch, grid, WENO_flux_KA_3D_x => (fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_flux_KA_3D_y => (fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_flux_KA_3D_z => (fl.z, fr.z, ut, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
-    launch(arch, grid, WENO_semi_discretisation_weno5_KA_3D! => (du, fl, fr, v, stag, Δx_, Δy_, Δz_, grid))
+        launch(arch, grid, WENO_flux_KA_3D_x => (fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_flux_KA_3D_y => (fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_flux_KA_3D_z => (fl.z, fr.z, ut, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
+        launch(arch, grid, WENO_semi_discretisation_weno5_KA_3D! => (du, fl, fr, v, stag, Δx_, Δy_, Δz_, grid))
 
-    interior(u) .= @muladd inv(3.0) .* interior(u) .+ 2.0 / 3.0 .* interior(ut) .- 2.0 / 3.0 .* Δt .* interior(du)
+        interior(u) .= @muladd inv(3.0) .* interior(u) .+ 2.0 / 3.0 .* interior(ut) .- 2.0 / 3.0 .* Δt .* interior(du)
+    else
+        launch(arch, grid, upwind_update_KA_3D! => (u, v, nx, ny, nz, Δx_, Δy_, Δz_, Δt, stag, boundary, grid))
+    end
 
     return nothing
 end

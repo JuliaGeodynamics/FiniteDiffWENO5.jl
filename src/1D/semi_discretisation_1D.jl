@@ -57,3 +57,40 @@ function semi_discretisation_weno5!(du::T, v, weno::WENOScheme, Δx_) where {T <
 
     return nothing
 end
+
+
+"""
+    upwind_update!(u, v, weno, nx, Δx_, Δt; stag=false)
+
+Perform a single explicit upwind advection update on field `u`
+using velocity field `v` on a staggered or collocated grid.
+
+- If `stag = true`, velocity is assumed to be defined at cell faces.
+- If `stag = false`, velocity is defined at cell centers.
+- Uses the boundary conditions stored in `weno.boundary`.
+"""
+function upwind_update_1D!(u, v, weno, nx, Δx_, Δt)
+    @unpack boundary, stag, multithreading = weno
+
+    bL = Val(boundary[1])
+    bR = Val(boundary[2])
+
+    @inbounds @maybe_threads multithreading for i in axes(u, 1)
+        iL = left_index(i - 1, 0, nx, bL)
+        iR = right_index(i + 1, 0, nx, bR)
+
+        if stag
+            u[i] -= Δt * (
+                max(v.x[i], 0) * (u[i] - u[iL]) +
+                    min(v.x[iR], 0) * (u[iR] - u[i])
+            ) * Δx_
+        else
+            u[i] -= Δt * (
+                max(v.x[i], 0) * (u[i] - u[iL]) +
+                    min(v.x[i], 0) * (u[iR] - u[i])
+            ) * Δx_
+        end
+    end
+
+    return nothing
+end

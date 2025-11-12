@@ -143,3 +143,74 @@ end
         end
     end
 end
+
+@kernel function upwind_update_KA_2D!(
+        u, v, nx, ny, Δx_, Δy_, Δt, stag, boundary, g, O
+    )
+    I = @index(Global, NTuple)
+    I = I + O
+
+    i, j = I[1], I[2]
+
+    # ---- Boundary conditions ----
+    # X-direction
+    if boundary[1] == 0       # Dirichlet left
+        iLx = clamp(i - 1, 1, nx)
+    elseif boundary[1] == 1   # Neumann left
+        iLx = max(i - 1, 1)
+    elseif boundary[1] == 2   # Periodic left
+        iLx = mod1(i - 1, nx)
+    end
+
+    if boundary[2] == 0       # Dirichlet right
+        iRx = clamp(i + 1, 1, nx)
+    elseif boundary[2] == 1   # Neumann right
+        iRx = min(i + 1, nx)
+    elseif boundary[2] == 2   # Periodic right
+        iRx = mod1(i + 1, nx)
+    end
+
+    # Y-direction
+    if boundary[3] == 0       # Dirichlet bottom
+        jLy = clamp(j - 1, 1, ny)
+    elseif boundary[3] == 1   # Neumann bottom
+        jLy = max(j - 1, 1)
+    elseif boundary[3] == 2   # Periodic bottom
+        jLy = mod1(j - 1, ny)
+    end
+
+    if boundary[4] == 0       # Dirichlet top
+        jRy = clamp(j + 1, 1, ny)
+    elseif boundary[4] == 1   # Neumann top
+        jRy = min(j + 1, ny)
+    elseif boundary[4] == 2   # Periodic top
+        jRy = mod1(j + 1, ny)
+    end
+
+    # ---- Upwind update ----
+    if stag
+        # Velocities defined at faces
+        u[i, j] -= @muladd Δt * (
+            (
+                max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +
+                    min(v.x[iRx, j], 0) * (u[iRx, j] - u[i, j])
+            ) * Δx_ +
+                (
+                max(v.y[i, j], 0) * (u[i, j] - u[i, jLy]) +
+                    min(v.y[i, jRy], 0) * (u[i, jRy] - u[i, j])
+            ) * Δy_
+        )
+    else
+        # Velocities defined at centers
+        u[i, j] -= @muladd Δt * (
+            (
+                max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +
+                    min(v.x[i, j], 0) * (u[iRx, j] - u[i, j])
+            ) * Δx_ +
+                (
+                max(v.y[i, j], 0) * (u[i, j] - u[i, jLy]) +
+                    min(v.y[i, j], 0) * (u[i, jRy] - u[i, j])
+            ) * Δy_
+        )
+    end
+end

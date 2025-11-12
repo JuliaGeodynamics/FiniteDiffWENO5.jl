@@ -4,9 +4,6 @@ using GLMakie
 
 function main(; backend = CPU(), nx = 400, ny = 400, stag = true)
 
-    nx = 400
-    ny = 400
-    stag = true
 
     Lx = 1.0
     Δx = Lx / nx
@@ -43,7 +40,7 @@ function main(; backend = CPU(), nx = 400, ny = 400, stag = true)
     u = KernelAbstractions.zeros(backend, Float64, nx, ny)
     copyto!(u, u0)
 
-    weno = WENOScheme(u, backend; boundary = (2, 2, 2, 2), stag = stag, multithreading = true)
+    weno = WENOScheme(u, backend; boundary = (2, 2, 2, 2), stag = stag)
 
     if stag
         v = (;

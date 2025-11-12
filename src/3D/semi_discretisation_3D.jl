@@ -192,3 +192,62 @@ function semi_discretisation_weno5!(du::T, v, weno::WENOScheme, Δx_, Δy_, Δz_
 
     return nothing
 end
+
+
+function upwind_update_3D!(
+        u, v, weno, nx, ny, nz, Δx_, Δy_, Δz_, Δt
+    )
+    @unpack boundary, stag, multithreading = weno
+
+    bLx = Val(boundary[1])
+    bRx = Val(boundary[2])
+    bLy = Val(boundary[3])
+    bRy = Val(boundary[4])
+    bLz = Val(boundary[5])
+    bRz = Val(boundary[6])
+
+    @inbounds @maybe_threads multithreading for I in CartesianIndices(u)
+        i, j, k = Tuple(I)
+
+        iLx = left_index(i - 1, 0, nx, bLx)
+        iRx = right_index(i + 1, 0, nx, bRx)
+        jLy = left_index(j - 1, 0, ny, bLy)
+        jRy = right_index(j + 1, 0, ny, bRy)
+        kLz = left_index(k - 1, 0, nz, bLz)
+        kRz = right_index(k + 1, 0, nz, bRz)
+
+        if stag
+            u[i, j, k] -= Δt * (
+                (
+                    max(v.x[i, j, k], 0) * (u[i, j, k] - u[iLx, j, k]) +
+                        min(v.x[iRx, j, k], 0) * (u[iRx, j, k] - u[i, j, k])
+                ) * Δx_ +
+                    (
+                    max(v.y[i, j, k], 0) * (u[i, j, k] - u[i, jLy, k]) +
+                        min(v.y[i, jRy, k], 0) * (u[i, jRy, k] - u[i, j, k])
+                ) * Δy_ +
+                    (
+                    max(v.z[i, j, k], 0) * (u[i, j, k] - u[i, j, kLz]) +
+                        min(v.z[i, j, kRz], 0) * (u[i, j, kRz] - u[i, j, k])
+                ) * Δz_
+            )
+        else
+            u[i, j, k] -= Δt * (
+                (
+                    max(v.x[i, j, k], 0) * (u[i, j, k] - u[iLx, j, k]) +
+                        min(v.x[i, j, k], 0) * (u[iRx, j, k] - u[i, j, k])
+                ) * Δx_ +
+                    (
+                    max(v.y[i, j, k], 0) * (u[i, j, k] - u[i, jLy, k]) +
+                        min(v.y[i, j, k], 0) * (u[i, jRy, k] - u[i, j, k])
+                ) * Δy_ +
+                    (
+                    max(v.z[i, j, k], 0) * (u[i, j, k] - u[i, j, kLz]) +
+                        min(v.z[i, j, k], 0) * (u[i, j, kRz] - u[i, j, k])
+                ) * Δz_
+            )
+        end
+    end
+
+    return u
+end

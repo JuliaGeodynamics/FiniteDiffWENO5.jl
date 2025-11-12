@@ -54,7 +54,7 @@ function main(; backend = CPU(), nx = 50, ny = 50, nz = 50)
 
     u = Field(backend, grid, Center())
     set!(u, u0)
-    weno = WENOScheme(u, grid; boundary = (2, 2, 2, 2, 2, 2), stag = false, multithreading = true)
+    weno = WENOScheme(u, grid; boundary = (2, 2, 2, 2, 2, 2), stag = false)
 
     Δt = CFL * min(Δx, Δy, Δz)^(5 / 3)
     tmax = period * Lx / max(maximum(abs.(vx0)), maximum(abs.(vy0)), maximum(abs.(vz0)))
@@ -82,6 +82,7 @@ function main(; backend = CPU(), nx = 50, ny = 50, nz = 50)
                 KernelAbstractions.synchronize(backend)
                 u_obser[] = (interior(u) |> Array)[:, :, div(nz, 2)]
                 ax.title = "t = $(round(t, digits = 2))"
+                display(f)
             end
         end
 

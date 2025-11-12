@@ -34,7 +34,7 @@ Create a WENO scheme structure for the given field `c` using the specified `back
 - `boundary::NTuple{2N, Int}`: A tuple specifying the boundary conditions for each dimension (0: homogeneous Neumann, 1: homogeneous Dirichlet, 2: periodic). Default is periodic (2).
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers).
 """
-function WENOScheme(c0::AbstractArray{T, N}, backend::Backend; boundary::NTuple = (2, 2), stag::Bool = true, lim_ZS::Bool = false, kwargs...) where {T, N}
+function WENOScheme(c0::AbstractArray{T, N}, backend::Backend; boundary::NTuple = (2, 2), stag::Bool = true, lim_ZS::Bool = false, upwind_mode::Bool = false) where {T, N}
 
     @assert get_backend(c0) == backend "The type of the input field must match the specified backend."
 
@@ -66,7 +66,7 @@ function WENOScheme(c0::AbstractArray{T, N}, backend::Backend; boundary::NTuple 
     TFlux = typeof(fl)
     TArray = typeof(du)
 
-    return WENOScheme{T, TArray, TFlux, N_boundary}(stag = stag, boundary = boundary, multithreading = multithreading, lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut)
+    return WENOScheme{T, TArray, TFlux, N_boundary}(stag = stag, boundary = boundary, multithreading = multithreading, lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut, upwind_mode = upwind_mode)
 end
 
 include("KAExt1D.jl")
@@ -99,28 +99,36 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x,), <:Tuple{<:AbstractArray{<:Real
 
     #! do things here for halos and such for clusters for boundaries probably
 
-    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ = weno
+    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode = weno
 
     nx = size(u, 1)
     Δx_ = inv(Δx)
 
-    kernel_flux_1D = WENO_flux_KA_1D(backend)
-    kernel_semi_discretisation_1D = WENO_semi_discretisation_weno5_KA_1D!(backend)
+    if !upwind_mode
 
-    kernel_flux_1D(fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = length(fl.x))
-    kernel_semi_discretisation_1D(du, fl, fr, v, stag, Δx_, nothing, Offset0, ndrange = length(du))
+        kernel_flux_1D = WENO_flux_KA_1D(backend)
+        kernel_semi_discretisation_1D = WENO_semi_discretisation_weno5_KA_1D!(backend)
 
-    ut .= @muladd u .- Δt .* du
+        kernel_flux_1D(fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = length(fl.x))
+        kernel_semi_discretisation_1D(du, fl, fr, v, stag, Δx_, nothing, Offset0, ndrange = length(du))
 
-    kernel_flux_1D(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = length(fl.x))
-    kernel_semi_discretisation_1D(du, fl, fr, v, stag, Δx_, nothing, Offset0, ndrange = length(du))
+        ut .= @muladd u .- Δt .* du
 
-    ut .= @muladd 0.75 .* u .+ 0.25 .* ut .- 0.25 .* Δt .* du
+        kernel_flux_1D(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = length(fl.x))
+        kernel_semi_discretisation_1D(du, fl, fr, v, stag, Δx_, nothing, Offset0, ndrange = length(du))
 
-    kernel_flux_1D(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = length(fl.x))
-    kernel_semi_discretisation_1D(du, fl, fr, v, stag, Δx_, nothing, Offset0, ndrange = length(du))
+        ut .= @muladd 0.75 .* u .+ 0.25 .* ut .- 0.25 .* Δt .* du
 
-    u .= @muladd inv(3.0) .* u .+ 2.0 / 3.0 .* ut .- 2.0 / 3.0 .* Δt .* du
+        kernel_flux_1D(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = length(fl.x))
+        kernel_semi_discretisation_1D(du, fl, fr, v, stag, Δx_, nothing, Offset0, ndrange = length(du))
+
+        u .= @muladd inv(3.0) .* u .+ 2.0 / 3.0 .* ut .- 2.0 / 3.0 .* Δt .* du
+    else
+        kernel_upwind = upwind_update_KA_1D!(backend)
+
+        kernel_upwind(u, v, nx, Δx_, Δt, stag, boundary, nothing, Offset0, ndrange = length(u))
+
+    end
 
     return nothing
 end
@@ -155,39 +163,47 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArra
 
     #! do things here for halos and such for clusters for boundaries probably
 
+    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode = weno
+
     nx = size(u, 1)
     ny = size(u, 2)
     Δx_ = inv(Δx)
     Δy_ = inv(Δy)
 
-    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ = weno
+    if !upwind_mode
+        flx_l = size(fl.x)
+        fly_l = size(fl.y)
+        du_l = size(du)
 
-    flx_l = size(fl.x)
-    fly_l = size(fl.y)
-    du_l = size(du)
+        kernel_flux_2D_x = WENO_flux_KA_2D_x(backend)
+        kernel_flux_2D_y = WENO_flux_KA_2D_y(backend)
+        kernel_semi_discretisation_2D = WENO_semi_discretisation_weno5_KA_2D!(backend)
 
-    kernel_flux_2D_x = WENO_flux_KA_2D_x(backend)
-    kernel_flux_2D_y = WENO_flux_KA_2D_y(backend)
-    kernel_semi_discretisation_2D = WENO_semi_discretisation_weno5_KA_2D!(backend)
+        kernel_flux_2D_x(fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flx_l)
+        kernel_flux_2D_y(fl.y, fr.y, u, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = fly_l)
+        kernel_semi_discretisation_2D(du, fl, fr, v, stag, Δx_, Δy_, nothing, Offset0, ndrange = du_l)
 
-    kernel_flux_2D_x(fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flx_l)
-    kernel_flux_2D_y(fl.y, fr.y, u, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = fly_l)
-    kernel_semi_discretisation_2D(du, fl, fr, v, stag, Δx_, Δy_, nothing, Offset0, ndrange = du_l)
-
-    ut .= @muladd u .- Δt .* du
+        ut .= @muladd u .- Δt .* du
 
 
-    kernel_flux_2D_x(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flx_l)
-    kernel_flux_2D_y(fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = fly_l)
-    kernel_semi_discretisation_2D(du, fl, fr, v, stag, Δx_, Δy_, nothing, Offset0, ndrange = du_l)
+        kernel_flux_2D_x(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flx_l)
+        kernel_flux_2D_y(fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = fly_l)
+        kernel_semi_discretisation_2D(du, fl, fr, v, stag, Δx_, Δy_, nothing, Offset0, ndrange = du_l)
 
-    ut .= @muladd 0.75 .* u .+ 0.25 .* ut .- 0.25 .* Δt .* du
+        ut .= @muladd 0.75 .* u .+ 0.25 .* ut .- 0.25 .* Δt .* du
 
-    kernel_flux_2D_x(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flx_l)
-    kernel_flux_2D_y(fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = fly_l)
-    kernel_semi_discretisation_2D(du, fl, fr, v, stag, Δx_, Δy_, nothing, Offset0, ndrange = du_l)
+        kernel_flux_2D_x(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flx_l)
+        kernel_flux_2D_y(fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = fly_l)
+        kernel_semi_discretisation_2D(du, fl, fr, v, stag, Δx_, Δy_, nothing, Offset0, ndrange = du_l)
 
-    u .= @muladd inv(3.0) .* u .+ 2.0 / 3.0 .* ut .- 2.0 / 3.0 .* Δt .* du
+        u .= @muladd inv(3.0) .* u .+ 2.0 / 3.0 .* ut .- 2.0 / 3.0 .* Δt .* du
+    else
+        u_l = size(u)
+
+        kernel_upwind = upwind_update_KA_2D!(backend)
+
+        kernel_upwind(u, v, nx, ny, Δx_, Δy_, Δt, stag, boundary, nothing, Offset0, ndrange = u_l)
+    end
 
     return nothing
 end
@@ -229,39 +245,49 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstract
     Δy_ = inv(Δy)
     Δz_ = inv(Δz)
 
-    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ = weno
+    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode = weno
 
-    flx_l = size(fl.x)
-    fly_l = size(fl.y)
-    flz_l = size(fl.z)
-    du_l = size(du)
+    if !upwind_mode
 
-    kernel_flux_3D_x = WENO_flux_KA_3D_x(backend)
-    kernel_flux_3D_y = WENO_flux_KA_3D_y(backend)
-    kernel_flux_3D_z = WENO_flux_KA_3D_z(backend)
-    kernel_semi_discretisation_3D = WENO_semi_discretisation_weno5_KA_3D!(backend)
+        flx_l = size(fl.x)
+        fly_l = size(fl.y)
+        flz_l = size(fl.z)
+        du_l = size(du)
+
+        kernel_flux_3D_x = WENO_flux_KA_3D_x(backend)
+        kernel_flux_3D_y = WENO_flux_KA_3D_y(backend)
+        kernel_flux_3D_z = WENO_flux_KA_3D_z(backend)
+        kernel_semi_discretisation_3D = WENO_semi_discretisation_weno5_KA_3D!(backend)
 
 
-    kernel_flux_3D_x(fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flx_l)
-    kernel_flux_3D_y(fl.y, fr.y, u, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = fly_l)
-    kernel_flux_3D_z(fl.z, fr.z, u, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flz_l)
-    kernel_semi_discretisation_3D(du, fl, fr, v, stag, Δx_, Δy_, Δz_, nothing, Offset0, ndrange = du_l)
+        kernel_flux_3D_x(fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flx_l)
+        kernel_flux_3D_y(fl.y, fr.y, u, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = fly_l)
+        kernel_flux_3D_z(fl.z, fr.z, u, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flz_l)
+        kernel_semi_discretisation_3D(du, fl, fr, v, stag, Δx_, Δy_, Δz_, nothing, Offset0, ndrange = du_l)
 
-    ut .= @muladd u .- Δt .* du
+        ut .= @muladd u .- Δt .* du
 
-    kernel_flux_3D_x(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flx_l)
-    kernel_flux_3D_y(fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = fly_l)
-    kernel_flux_3D_z(fl.z, fr.z, ut, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flz_l)
-    kernel_semi_discretisation_3D(du, fl, fr, v, stag, Δx_, Δy_, Δz_, nothing, Offset0, ndrange = du_l)
+        kernel_flux_3D_x(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flx_l)
+        kernel_flux_3D_y(fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = fly_l)
+        kernel_flux_3D_z(fl.z, fr.z, ut, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flz_l)
+        kernel_semi_discretisation_3D(du, fl, fr, v, stag, Δx_, Δy_, Δz_, nothing, Offset0, ndrange = du_l)
 
-    ut .= @muladd 0.75 .* u .+ 0.25 .* ut .- 0.25 .* Δt .* du
+        ut .= @muladd 0.75 .* u .+ 0.25 .* ut .- 0.25 .* Δt .* du
 
-    kernel_flux_3D_x(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flx_l)
-    kernel_flux_3D_y(fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = fly_l)
-    kernel_flux_3D_z(fl.z, fr.z, ut, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flz_l)
-    kernel_semi_discretisation_3D(du, fl, fr, v, stag, Δx_, Δy_, Δz_, nothing, Offset0, ndrange = du_l)
+        kernel_flux_3D_x(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flx_l)
+        kernel_flux_3D_y(fl.y, fr.y, ut, boundary, ny, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = fly_l)
+        kernel_flux_3D_z(fl.z, fr.z, ut, boundary, nz, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, nothing, Offset0, ndrange = flz_l)
+        kernel_semi_discretisation_3D(du, fl, fr, v, stag, Δx_, Δy_, Δz_, nothing, Offset0, ndrange = du_l)
 
-    u .= @muladd inv(3.0) .* u .+ 2.0 / 3.0 .* ut .- 2.0 / 3.0 .* Δt .* du
+        u .= @muladd inv(3.0) .* u .+ 2.0 / 3.0 .* ut .- 2.0 / 3.0 .* Δt .* du
+    else
+        u_l = size(u)
+
+        kernel_upwind = upwind_update_KA_3D!(backend)
+
+        kernel_upwind(u, v, nx, ny, nz, Δx_, Δy_, Δz_, Δt, stag, boundary, nothing, Offset0, ndrange = u_l)
+
+    end
 
     return nothing
 end

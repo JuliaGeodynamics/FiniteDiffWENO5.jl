@@ -4,8 +4,6 @@ using KernelAbstractions
 
 function main(backend = CPU(), nx = 400)
 
-    backend = CPU()
-    nx = 400
 
     x_min = -1.0
     x_max = 1.0

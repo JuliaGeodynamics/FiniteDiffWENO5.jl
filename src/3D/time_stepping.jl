@@ -26,27 +26,32 @@ function WENO_step!(u::T, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Array{<:Rea
     nx, ny, nz = size(u, 1), size(u, 2), size(u, 3)
     Δx_, Δy_, Δz_ = inv(Δx), inv(Δy), inv(Δz)
 
-    @unpack ut, du, stag, fl, fr, multithreading = weno
+    @unpack ut, du, stag, fl, fr, multithreading, upwind_mode = weno
 
-    WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
-    semi_discretisation_weno5!(du, v, weno, Δx_, Δy_, Δz_)
+    if !upwind_mode
+        WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
+        semi_discretisation_weno5!(du, v, weno, Δx_, Δy_, Δz_)
 
-    @inbounds @maybe_threads multithreading for I in CartesianIndices(ut)
-        ut[I] = @muladd u[I] - Δt * du[I]
-    end
+        @inbounds @maybe_threads multithreading for I in CartesianIndices(ut)
+            ut[I] = @muladd u[I] - Δt * du[I]
+        end
 
-    WENO_flux!(fl, fr, ut, weno, nx, ny, nz, u_min, u_max)
-    semi_discretisation_weno5!(du, v, weno, Δx_, Δy_, Δz_)
+        WENO_flux!(fl, fr, ut, weno, nx, ny, nz, u_min, u_max)
+        semi_discretisation_weno5!(du, v, weno, Δx_, Δy_, Δz_)
 
-    @inbounds @maybe_threads multithreading for I in CartesianIndices(ut)
-        ut[I] = @muladd 0.75 * u[I] + 0.25 * ut[I] - 0.25 * Δt * du[I]
-    end
+        @inbounds @maybe_threads multithreading for I in CartesianIndices(ut)
+            ut[I] = @muladd 0.75 * u[I] + 0.25 * ut[I] - 0.25 * Δt * du[I]
+        end
 
-    WENO_flux!(fl, fr, ut, weno, nx, ny, nz, u_min, u_max)
-    semi_discretisation_weno5!(du, v, weno, Δx_, Δy_, Δz_)
+        WENO_flux!(fl, fr, ut, weno, nx, ny, nz, u_min, u_max)
+        semi_discretisation_weno5!(du, v, weno, Δx_, Δy_, Δz_)
 
-    @inbounds @maybe_threads multithreading for I in CartesianIndices(u)
-        u[I] = @muladd 1.0 / 3.0 * u[I] + 2.0 / 3.0 * ut[I] - (2.0 / 3.0) * Δt * du[I]
+        @inbounds @maybe_threads multithreading for I in CartesianIndices(u)
+            u[I] = @muladd 1.0 / 3.0 * u[I] + 2.0 / 3.0 * ut[I] - (2.0 / 3.0) * Δt * du[I]
+        end
+    else
+        # Use simple upwind scheme for debugging
+        upwind_update_3D!(u, v, weno, nx, ny, nz, Δx_, Δy_, Δz_, Δt)
     end
 
     return nothing

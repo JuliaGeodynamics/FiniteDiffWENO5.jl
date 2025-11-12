@@ -203,3 +203,98 @@ end
         end
     end
 end
+
+@kernel function upwind_update_KA_3D!(
+        u, v, nx, ny, nz, Δx_, Δy_, Δz_, Δt, stag, boundary, g, O
+    )
+    I = @index(Global, NTuple)
+    I = I + O
+
+    i, j, k = I[1], I[2], I[3]
+
+    # ---- X-direction boundaries ----
+    if boundary[1] == 0       # Dirichlet left
+        iLx = clamp(i - 1, 1, nx)
+    elseif boundary[1] == 1   # Neumann left
+        iLx = max(i - 1, 1)
+    elseif boundary[1] == 2   # Periodic left
+        iLx = mod1(i - 1, nx)
+    end
+
+    if boundary[2] == 0       # Dirichlet right
+        iRx = clamp(i + 1, 1, nx)
+    elseif boundary[2] == 1   # Neumann right
+        iRx = min(i + 1, nx)
+    elseif boundary[2] == 2   # Periodic right
+        iRx = mod1(i + 1, nx)
+    end
+
+    # ---- Y-direction boundaries ----
+    if boundary[3] == 0       # Dirichlet bottom
+        jLy = clamp(j - 1, 1, ny)
+    elseif boundary[3] == 1   # Neumann bottom
+        jLy = max(j - 1, 1)
+    elseif boundary[3] == 2   # Periodic bottom
+        jLy = mod1(j - 1, ny)
+    end
+
+    if boundary[4] == 0       # Dirichlet top
+        jRy = clamp(j + 1, 1, ny)
+    elseif boundary[4] == 1   # Neumann top
+        jRy = min(j + 1, ny)
+    elseif boundary[4] == 2   # Periodic top
+        jRy = mod1(j + 1, ny)
+    end
+
+    # ---- Z-direction boundaries ----
+    if boundary[5] == 0       # Dirichlet front
+        kLz = clamp(k - 1, 1, nz)
+    elseif boundary[5] == 1   # Neumann front
+        kLz = max(k - 1, 1)
+    elseif boundary[5] == 2   # Periodic front
+        kLz = mod1(k - 1, nz)
+    end
+
+    if boundary[6] == 0       # Dirichlet back
+        kRz = clamp(k + 1, 1, nz)
+    elseif boundary[6] == 1   # Neumann back
+        kRz = min(k + 1, nz)
+    elseif boundary[6] == 2   # Periodic back
+        kRz = mod1(k + 1, nz)
+    end
+
+    # ---- Upwind update ----
+    if stag
+        # Velocities defined at faces
+        u[i, j, k] -= @muladd Δt * (
+            (
+                max(v.x[i, j, k], 0) * (u[i, j, k] - u[iLx, j, k]) +
+                    min(v.x[iRx, j, k], 0) * (u[iRx, j, k] - u[i, j, k])
+            ) * Δx_ +
+                (
+                max(v.y[i, j, k], 0) * (u[i, j, k] - u[i, jLy, k]) +
+                    min(v.y[i, jRy, k], 0) * (u[i, jRy, k] - u[i, j, k])
+            ) * Δy_ +
+                (
+                max(v.z[i, j, k], 0) * (u[i, j, k] - u[i, j, kLz]) +
+                    min(v.z[i, j, kRz], 0) * (u[i, j, kRz] - u[i, j, k])
+            ) * Δz_
+        )
+    else
+        # Velocities defined at cell centers
+        u[i, j, k] -= @muladd Δt * (
+            (
+                max(v.x[i, j, k], 0) * (u[i, j, k] - u[iLx, j, k]) +
+                    min(v.x[i, j, k], 0) * (u[iRx, j, k] - u[i, j, k])
+            ) * Δx_ +
+                (
+                max(v.y[i, j, k], 0) * (u[i, j, k] - u[i, jLy, k]) +
+                    min(v.y[i, j, k], 0) * (u[i, jRy, k] - u[i, j, k])
+            ) * Δy_ +
+                (
+                max(v.z[i, j, k], 0) * (u[i, j, k] - u[i, j, kLz]) +
+                    min(v.z[i, j, k], 0) * (u[i, j, kRz] - u[i, j, k])
+            ) * Δz_
+        )
+    end
+end

@@ -190,7 +190,7 @@
 
         u = Field(backend, grid, Center())
         set!(u, u0)
-        weno = WENOScheme(u, grid; boundary = (2, 2, 2, 2, 2, 2), stag = false, multithreading = true)
+        weno = WENOScheme(u, grid; boundary = (2, 2, 2, 2, 2, 2), stag = false)
 
         Δt = CFL * min(Δx, Δy, Δz)^(5 / 3)
         tmax = period * Lx / max(maximum(abs.(vx0)), maximum(abs.(vy0)), maximum(abs.(vz0)))
