@@ -1,6 +1,6 @@
 name = "FiniteDiffWENO5"
 uuid = "4b1b4241-afed-47c3-a843-c6e03821b375"
-version = "0.0.3"
+version = "0.0.4"
 authors = ["Hugo Dominguez  <hdomingu@uni-mainz.de>"]
 
 [deps]
