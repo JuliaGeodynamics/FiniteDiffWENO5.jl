@@ -17,6 +17,8 @@ abstract type AbstractWENO end
     boundary::NTuple{N_boundary, Int}
     # multithreading
     multithreading::Bool
+    # simple upwind for debugging
+    upwind_mode::Bool = false
     # fluxes as NamedTuples
     fl::TFlux
     fr::TFlux
@@ -35,7 +37,9 @@ Structure containing the Weighted Essentially Non-Oscillatory (WENO) scheme of o
 - `c0::Array{T, N}`: The input field for which the WENO scheme is to be created. Only used to get the type and size.
 - `boundary::NTuple{2N, Int}`: A tuple specifying the boundary conditions for each dimension (0: homogeneous Neumann, 1: homogeneous Dirichlet, 2: periodic). Default to homogeneous Neumann (0).
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers). Default to false.
+- `lim_ZS::Bool`: Whether to use the Zhang-Shu (2010) limiter. Default to false.
 - `multithreading::Bool`: Whether to use multithreading (only for 2D and 3D). Default to true.
+- `upwind_mode::Bool`: Whether to use a simple upwind scheme for debugging purposes. Default to false.
 
 # Fields
 - `γ::NTuple{3, T}`: Upwind and downwind constants.
@@ -51,7 +55,7 @@ Structure containing the Weighted Essentially Non-Oscillatory (WENO) scheme of o
 - `du::Array{T, N}`: Semi-discretisation of the advection term.
 - `ut::Array{T, N}`: Temporary array for intermediate calculations using Runge-Kutta.
 """
-function WENOScheme(c0::Array{T, N}; boundary::NTuple = ntuple(i -> 0, N * 2), stag::Bool = false, lim_ZS::Bool = false, multithreading::Bool = true) where {T, N}
+function WENOScheme(c0::Array{T, N}; boundary::NTuple = ntuple(i -> 0, N * 2), stag::Bool = false, lim_ZS::Bool = false, multithreading::Bool = true, upwind_mode::Bool = false) where {T, N}
 
     # check that boundary conditions are correctly defined
     @assert length(boundary) == 2N "Boundary conditions must be a tuple of length $(2N) for $(N)D data."
@@ -83,5 +87,5 @@ function WENOScheme(c0::Array{T, N}; boundary::NTuple = ntuple(i -> 0, N * 2), s
     TFlux = typeof(fl)
     TArray = typeof(du)
 
-    return WENOScheme{T, TArray, TFlux, N_boundary}(stag = stag, boundary = boundary, lim_ZS = lim_ZS, multithreading = multithreading, fl = fl, fr = fr, du = du, ut = ut)
+    return WENOScheme{T, TArray, TFlux, N_boundary}(stag = stag, boundary = boundary, lim_ZS = lim_ZS, multithreading = multithreading, upwind_mode = upwind_mode, fl = fl, fr = fr, du = du, ut = ut)
 end

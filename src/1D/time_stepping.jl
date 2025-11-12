@@ -24,27 +24,33 @@ function WENO_step!(u::T, v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}}, weno:
     nx = size(u, 1)
     Δx_ = inv(Δx)
 
-    @unpack ut, du, stag, fl, fr, multithreading = weno
+    @unpack ut, du, stag, fl, fr, multithreading, upwind_mode = weno
 
-    WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
-    semi_discretisation_weno5!(du, v, weno, Δx_)
+    if upwind_mode
+        WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
+        semi_discretisation_weno5!(du, v, weno, Δx_)
 
-    @inbounds @maybe_threads multithreading for i in axes(ut, 1)
-        ut[i] = @muladd u[i] - Δt * du[i]
-    end
+        @inbounds @maybe_threads multithreading for i in axes(ut, 1)
+            ut[i] = @muladd u[i] - Δt * du[i]
+        end
 
-    WENO_flux!(fl, fr, ut, weno, nx, u_min, u_max)
-    semi_discretisation_weno5!(du, v, weno, Δx_)
+        WENO_flux!(fl, fr, ut, weno, nx, u_min, u_max)
+        semi_discretisation_weno5!(du, v, weno, Δx_)
 
-    @inbounds @maybe_threads multithreading for i in axes(ut, 1)
-        ut[i] = @muladd 0.75 * u[i] + 0.25 * ut[i] - 0.25 * Δt * du[i]
-    end
+        @inbounds @maybe_threads multithreading for i in axes(ut, 1)
+            ut[i] = @muladd 0.75 * u[i] + 0.25 * ut[i] - 0.25 * Δt * du[i]
+        end
 
-    WENO_flux!(fl, fr, ut, weno, nx, u_min, u_max)
-    semi_discretisation_weno5!(du, v, weno, Δx_)
+        WENO_flux!(fl, fr, ut, weno, nx, u_min, u_max)
+        semi_discretisation_weno5!(du, v, weno, Δx_)
 
-    @inbounds @maybe_threads multithreading for i in axes(u, 1)
-        u[i] = @muladd 1.0 / 3.0 * u[i] + 2.0 / 3.0 * ut[i] - (2.0 / 3.0) * Δt * du[i]
+        @inbounds @maybe_threads multithreading for i in axes(u, 1)
+            u[i] = @muladd 1.0 / 3.0 * u[i] + 2.0 / 3.0 * ut[i] - (2.0 / 3.0) * Δt * du[i]
+        end
+
+    else
+        # Use simple upwind scheme for debugging
+        upwind_update_1D!(u, v, weno, nx, Δx_, Δt)
     end
 
     return nothing
