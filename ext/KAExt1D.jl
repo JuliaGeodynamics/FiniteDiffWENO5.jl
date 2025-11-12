@@ -73,41 +73,41 @@ end
 
 
 @kernel inbounds = true function upwind_update_KA_1D!(
-    u, v, nx, Δx_, Δt, stag, boundary, g, O
-)
+        u, v, nx, Δx_, Δt, stag, boundary, g, O
+    )
     I = @index(Global, NTuple)
     I = I + O
     i = I[1]
 
     # Left boundary condition
     if boundary[1] == 0       # Dirichlet
-        iL = clamp(i-1, 1, nx)
+        iL = clamp(i - 1, 1, nx)
     elseif boundary[1] == 1   # Neumann
-        iL = max(i-1, 1)
+        iL = max(i - 1, 1)
     elseif boundary[1] == 2   # Periodic
-        iL = mod1(i-1, nx)
+        iL = mod1(i - 1, nx)
     end
 
     # Right boundary condition
     if boundary[2] == 0
-        iR = clamp(i+1, 1, nx)
+        iR = clamp(i + 1, 1, nx)
     elseif boundary[2] == 1
-        iR = min(i+1, nx)
+        iR = min(i + 1, nx)
     elseif boundary[2] == 2
-        iR = mod1(i+1, nx)
+        iR = mod1(i + 1, nx)
     end
 
     if stag
         # velocity defined at faces
         u[i] -= @muladd Δt * (
             max(v.x[i], 0) * (u[i] - u[iL]) +
-            min(v.x[iR], 0) * (u[iR] - u[i])
+                min(v.x[iR], 0) * (u[iR] - u[i])
         ) * Δx_
     else
         # velocity defined at centers
         u[i] -= @muladd Δt * (
             max(v.x[i], 0) * (u[i] - u[iL]) +
-            min(v.x[i], 0) * (u[iR] - u[i])
+                min(v.x[i], 0) * (u[iR] - u[i])
         ) * Δx_
     end
 end
