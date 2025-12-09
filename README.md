@@ -114,4 +114,4 @@ Which produces the following result:
 
 The development of this package was supported by the TRIGGER project funded by the German Federal Ministry for Economic Affairs and Energy (BMWK).
 
-Author: Hugo Dominguez (hdomingu@univ-mainz.de).
+Author: Hugo Dominguez (hdomingu@uni-mainz.de).
