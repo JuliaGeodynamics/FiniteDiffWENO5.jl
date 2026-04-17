@@ -1,5 +1,5 @@
 function WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
-    @unpack boundary, χ, γ, ζ, ϵ, multithreading, lim_ZS = weno
+    (; boundary, χ, γ, ζ, ϵ, multithreading, lim_ZS) = weno
 
     bL = Val(boundary[1])
     bR = Val(boundary[2])
@@ -37,7 +37,7 @@ end
 
 function semi_discretisation_weno5!(du::T, v, weno::WENOScheme, Δx_) where {T <: AbstractArray{<:Real, 1}}
 
-    @unpack fl, fr, stag, multithreading = weno
+    (; fl, fr, stag, multithreading) = weno
 
     # use staggered grid or not for the velocities
     if stag
@@ -70,7 +70,7 @@ using velocity field `v` on a staggered or collocated grid.
 - Uses the boundary conditions stored in `weno.boundary`.
 """
 function upwind_update_1D!(u, v, weno, nx, Δx_, Δt)
-    @unpack boundary, stag, multithreading = weno
+    (; boundary, stag, multithreading) = weno
 
     bL = Val(boundary[1])
     bR = Val(boundary[2])
