@@ -257,12 +257,12 @@
 
         u1_single = Field(backend, grid, Center())
         u2_single = Field(backend, grid, Center())
-        u1_multi  = Field(backend, grid, Center())
-        u2_multi  = Field(backend, grid, Center())
+        u1_multi = Field(backend, grid, Center())
+        u2_multi = Field(backend, grid, Center())
         set!(u1_single, u1_init)
         set!(u2_single, u2_init)
-        set!(u1_multi,  u1_init)
-        set!(u2_multi,  u2_init)
+        set!(u1_multi, u1_init)
+        set!(u2_multi, u2_init)
 
         weno = WENOScheme(u1_single, grid; boundary = (2, 2), stag = true)
 
