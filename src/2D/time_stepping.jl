@@ -25,7 +25,7 @@ function WENO_step!(u::T, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<
     nx, ny = size(u, 1), size(u, 2)
     Δx_, Δy_ = inv(Δx), inv(Δy)
 
-    @unpack ut, du, stag, fl, fr, multithreading, upwind_mode = weno
+    (; ut, du, stag, fl, fr, multithreading, upwind_mode) = weno
 
     if !upwind_mode
         WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)

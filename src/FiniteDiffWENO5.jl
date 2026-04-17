@@ -1,6 +1,5 @@
 module FiniteDiffWENO5
 
-using UnPack
 using MuladdMacro
 
 export WENOScheme, WENO_step!

@@ -2,7 +2,6 @@ module KAExt
 using FiniteDiffWENO5
 using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind
 using MuladdMacro
-using UnPack
 using KernelAbstractions
 
 import FiniteDiffWENO5: WENOScheme, WENO_step!
@@ -99,7 +98,7 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x,), <:Tuple{<:AbstractArray{<:Real
 
     #! do things here for halos and such for clusters for boundaries probably
 
-    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode = weno
+    (; ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode) = weno
 
     nx = size(u, 1)
     Δx_ = inv(Δx)
@@ -163,7 +162,7 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArra
 
     #! do things here for halos and such for clusters for boundaries probably
 
-    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode = weno
+    (; ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode) = weno
 
     nx = size(u, 1)
     ny = size(u, 2)
@@ -245,7 +244,7 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstract
     Δy_ = inv(Δy)
     Δz_ = inv(Δz)
 
-    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode = weno
+    (; ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode) = weno
 
     if !upwind_mode
 

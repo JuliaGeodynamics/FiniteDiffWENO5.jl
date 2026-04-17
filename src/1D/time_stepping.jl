@@ -24,7 +24,7 @@ function WENO_step!(u::T, v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}}, weno:
     nx = size(u, 1)
     Δx_ = inv(Δx)
 
-    @unpack ut, du, stag, fl, fr, multithreading, upwind_mode = weno
+    (; ut, du, stag, fl, fr, multithreading, upwind_mode) = weno
 
     if !upwind_mode
         WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
