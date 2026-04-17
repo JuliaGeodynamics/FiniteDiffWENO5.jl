@@ -263,4 +263,43 @@ function WENO_step!(u::T_field, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstr
 end
 
 
+# ── Multi-field overloads ──────────────────────────────────────────────
+
+"""
+    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, grid, arch; u_min, u_max)
+
+Advance multiple 1D Chmy fields sharing the same velocity and WENOScheme buffers.
+"""
+function WENO_step!(u::Tuple{Vararg{<:AbstractField{<:Real, 1}}}, v::NamedTuple{(:x,), <:Tuple{<:AbstractField{<:Real, 1}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, grid::StructuredGrid, arch; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
+    for i in eachindex(u)
+        WENO_step!(u[i], v, weno, Δt, Δx, grid, arch; u_min = u_min[i], u_max = u_max[i])
+    end
+    return nothing
+end
+
+"""
+    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, Δy, grid, arch; u_min, u_max)
+
+Advance multiple 2D Chmy fields sharing the same velocity and WENOScheme buffers.
+"""
+function WENO_step!(u::Tuple{Vararg{<:AbstractField{<:Real, 2}}}, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractField{<:Real}, 2}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, grid::StructuredGrid, arch; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
+    for i in eachindex(u)
+        WENO_step!(u[i], v, weno, Δt, Δx, Δy, grid, arch; u_min = u_min[i], u_max = u_max[i])
+    end
+    return nothing
+end
+
+"""
+    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, Δy, Δz, grid, arch; u_min, u_max)
+
+Advance multiple 3D Chmy fields sharing the same velocity and WENOScheme buffers.
+"""
+function WENO_step!(u::Tuple{Vararg{<:AbstractArray{<:Real, 3}}}, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractField{<:Real}, 3}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, Δz, grid::StructuredGrid, arch; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
+    for i in eachindex(u)
+        WENO_step!(u[i], v, weno, Δt, Δx, Δy, Δz, grid, arch; u_min = u_min[i], u_max = u_max[i])
+    end
+    return nothing
+end
+
+
 end

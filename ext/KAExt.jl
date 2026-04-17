@@ -293,4 +293,43 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstract
 end
 
 
+# ── Multi-field overloads ──────────────────────────────────────────────
+
+"""
+    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, backend; u_min, u_max)
+
+Advance multiple 1D fields sharing the same velocity and WENOScheme buffers.
+"""
+function WENO_step!(u::Tuple{Vararg{<:AbstractVector{<:Real}}}, v::NamedTuple{(:x,), <:Tuple{<:AbstractArray{<:Real}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, backend::Backend; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
+    for i in eachindex(u)
+        WENO_step!(u[i], v, weno, Δt, Δx, backend; u_min = u_min[i], u_max = u_max[i])
+    end
+    return nothing
+end
+
+"""
+    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, Δy, backend; u_min, u_max)
+
+Advance multiple 2D fields sharing the same velocity and WENOScheme buffers.
+"""
+function WENO_step!(u::Tuple{Vararg{<:AbstractArray{<:Real, 2}}}, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<:Real}, 2}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, backend::Backend; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
+    for i in eachindex(u)
+        WENO_step!(u[i], v, weno, Δt, Δx, Δy, backend; u_min = u_min[i], u_max = u_max[i])
+    end
+    return nothing
+end
+
+"""
+    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, Δy, Δz, backend; u_min, u_max)
+
+Advance multiple 3D fields sharing the same velocity and WENOScheme buffers.
+"""
+function WENO_step!(u::Tuple{Vararg{<:AbstractArray{<:Real, 3}}}, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractArray{<:Real}, 3}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, Δz, backend::Backend; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
+    for i in eachindex(u)
+        WENO_step!(u[i], v, weno, Δt, Δx, Δy, Δz, backend; u_min = u_min[i], u_max = u_max[i])
+    end
+    return nothing
+end
+
+
 end
