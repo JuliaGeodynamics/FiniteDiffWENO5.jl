@@ -4,7 +4,7 @@
     @testset "Constant field" begin
         u = fill(3.14, 5)
         weno = WENOScheme(u)
-        @unpack χ, γ, ζ, ϵ = weno
+        (; χ, γ, ζ, ϵ) = weno
 
         f_up = FiniteDiffWENO5.weno5_reconstruction_upwind(u..., χ, γ, ζ, ϵ)
         f_down = FiniteDiffWENO5.weno5_reconstruction_downwind(u..., χ, γ, ζ, ϵ)
@@ -17,7 +17,7 @@
     @testset "Linear field" begin
         u = [1.0, 2.0, 3.0, 4.0, 5.0]
         weno = WENOScheme(u)
-        @unpack χ, γ, ζ, ϵ = weno
+        (; χ, γ, ζ, ϵ) = weno
 
         f_up = FiniteDiffWENO5.weno5_reconstruction_upwind(u..., χ, γ, ζ, ϵ)
         f_down = FiniteDiffWENO5.weno5_reconstruction_downwind(u..., χ, γ, ζ, ϵ)
@@ -31,7 +31,7 @@
         x = -2:2
         u = float.(x .^ 2)  # smooth convex profile
         weno = WENOScheme(float(u))
-        @unpack χ, γ, ζ, ϵ = weno
+        (; χ, γ, ζ, ϵ) = weno
 
         fl = (2u[1] - 13u[2] + 47u[3] + 27u[4] - 3u[5]) / 60.0
         fr = (-3u[1] + 27u[2] + 47u[3] - 13u[4] + 2u[5]) / 60.0
@@ -47,7 +47,7 @@
     @testset "Discontinuous field" begin
         u = [1.0, 1.0, 1.0, 10.0, 10.0]
         weno = WENOScheme(u)
-        @unpack χ, γ, ζ, ϵ = weno
+        (; χ, γ, ζ, ϵ) = weno
 
         f_up = FiniteDiffWENO5.weno5_reconstruction_upwind(u..., χ, γ, ζ, ϵ)
         f_down = FiniteDiffWENO5.weno5_reconstruction_downwind(u..., χ, γ, ζ, ϵ)

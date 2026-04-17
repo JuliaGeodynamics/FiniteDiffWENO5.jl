@@ -125,6 +125,47 @@ Which produces the following result:
 
 ![](/docs/src/assets/1D_linear_advection.png)
 
+## Multi-field advection
+
+If you have multiple scalar fields (e.g. different chemical components) that share the same velocity, you can advect them all in a single call by passing a tuple of arrays. The same `WENOScheme` buffers are reused for each field, so there is no extra memory overhead. Each field gets its own `u_min` / `u_max` bounds for the Zhang-Shu limiter.
+
+```julia
+using FiniteDiffWENO5
+
+nx, ny = 200, 200
+Lx = 1.0
+Δx, Δy = Lx / nx, Lx / ny
+
+# Three chemical components with different initial distributions
+c1 = rand(nx, ny)
+c2 = zeros(nx, ny)
+c3 = ones(nx, ny)
+
+# Shared velocity field
+v = (; x = ones(nx, ny), y = 0.5 .* ones(nx, ny))
+
+# Create the WENO scheme from any one of the fields (they must all have the same size and type)
+weno = WENOScheme(c1; boundary = (2, 2, 2, 2), stag = false)
+
+Δt = 0.7 * min(Δx, Δy)^(5 / 3)
+
+# Advect all three fields in one call with per-field limiter bounds
+WENO_step!((c1, c2, c3), v, weno, Δt, Δx, Δy;
+    u_min = (0.0, 0.0, 0.0),
+    u_max = (1.0, 1.0, 1.0))
+```
+
+This also works with the KernelAbstractions and Chmy backends:
+
+```julia
+# KernelAbstractions
+WENO_step!((c1, c2, c3), v, weno, Δt, Δx, Δy, backend;
+    u_min = (0.0, 0.0, 0.0), u_max = (1.0, 1.0, 1.0))
+
+# Chmy
+WENO_step!((c1, c2, c3), v, weno, Δt, Δx, Δy, grid, arch;
+    u_min = (0.0, 0.0, 0.0), u_max = (1.0, 1.0, 1.0))
+```
 
 ## Funding & author
 

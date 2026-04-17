@@ -2,7 +2,6 @@ using Test
 using FiniteDiffWENO5
 using KernelAbstractions
 using Chmy
-using UnPack
 
 function runtests()
     files = readdir(@__DIR__)

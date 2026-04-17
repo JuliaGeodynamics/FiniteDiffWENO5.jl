@@ -2,7 +2,6 @@ module ChmyExt
 using FiniteDiffWENO5
 using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind
 using MuladdMacro
-using UnPack
 using Chmy
 using KernelAbstractions
 
@@ -103,7 +102,7 @@ function WENO_step!(u::T_field, v::NamedTuple{(:x,), <:Tuple{<:AbstractField{<:R
     nx = grid.axes[1].length
     Δx_ = inv(Δx)
 
-    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode = weno
+    (; ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode) = weno
 
     if !upwind_mode
 
@@ -164,7 +163,7 @@ function WENO_step!(u::T_field, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractF
     Δx_ = inv(Δx)
     Δy_ = inv(Δy)
 
-    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode = weno
+    (; ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode) = weno
 
     if !upwind_mode
         launch(arch, grid, WENO_flux_KA_2D_x => (fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
@@ -232,7 +231,7 @@ function WENO_step!(u::T_field, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstr
     Δy_ = inv(Δy)
     Δz_ = inv(Δz)
 
-    @unpack ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode = weno
+    (; ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode) = weno
 
     if !upwind_mode
         launch(arch, grid, WENO_flux_KA_3D_x => (fl.x, fr.x, u, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
@@ -259,6 +258,45 @@ function WENO_step!(u::T_field, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstr
         launch(arch, grid, upwind_update_KA_3D! => (u, v, nx, ny, nz, Δx_, Δy_, Δz_, Δt, stag, boundary, grid))
     end
 
+    return nothing
+end
+
+
+# ── Multi-field overloads ──────────────────────────────────────────────
+
+"""
+    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, grid, arch; u_min, u_max)
+
+Advance multiple 1D Chmy fields sharing the same velocity and WENOScheme buffers.
+"""
+function WENO_step!(u::Tuple{Vararg{<:AbstractField{<:Real, 1}}}, v::NamedTuple{(:x,), <:Tuple{<:AbstractField{<:Real, 1}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, grid::StructuredGrid, arch; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
+    for i in eachindex(u)
+        WENO_step!(u[i], v, weno, Δt, Δx, grid, arch; u_min = u_min[i], u_max = u_max[i])
+    end
+    return nothing
+end
+
+"""
+    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, Δy, grid, arch; u_min, u_max)
+
+Advance multiple 2D Chmy fields sharing the same velocity and WENOScheme buffers.
+"""
+function WENO_step!(u::Tuple{Vararg{<:AbstractField{<:Real, 2}}}, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractField{<:Real}, 2}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, grid::StructuredGrid, arch; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
+    for i in eachindex(u)
+        WENO_step!(u[i], v, weno, Δt, Δx, Δy, grid, arch; u_min = u_min[i], u_max = u_max[i])
+    end
+    return nothing
+end
+
+"""
+    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, Δy, Δz, grid, arch; u_min, u_max)
+
+Advance multiple 3D Chmy fields sharing the same velocity and WENOScheme buffers.
+"""
+function WENO_step!(u::Tuple{Vararg{<:AbstractArray{<:Real, 3}}}, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractField{<:Real}, 3}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, Δz, grid::StructuredGrid, arch; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
+    for i in eachindex(u)
+        WENO_step!(u[i], v, weno, Δt, Δx, Δy, Δz, grid, arch; u_min = u_min[i], u_max = u_max[i])
+    end
     return nothing
 end
 

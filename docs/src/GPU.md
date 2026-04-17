@@ -1,14 +1,21 @@
 
-## Getting Started
+## Running on GPU
 
-There are currently two exported functions in FiniteDiffWENO5.jl: `WENOScheme()` and `WENO_step!()`. The user must define the grid and the initial conditions themselves.
+To use this package on a GPU, you need to use [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) to define the arrays and run the computations.
+The KernelAbstractions.jl package introduces a macro-based programming model that simplifies vendor-specific GPU programming by abstracting away its complexities. This allows hardware-independent kernels to be written that can be compiled and executed on different device backends without altering the high-level code or compromising performance.
 
-`WENOScheme()` is used to create a WENO scheme structure containing all the necessary information for the WENO method, while `WENO_step!()` performs one step of the time integration using the WENO-Z method and a 3rd-order Runge-Kutta method. Refer to the docstrings to see the available options for each function.
 
-Here is a simple example of how to use FiniteDiffWENO5.jl to solve the 1D advection equation using the conservative form on a staggered grid. For more examples, please refer to the folder examples in the repository or the tests in the test folder.
+This will load an extension from FiniteDiffWENO5GPU.jl:
 
 ```julia
+using KernelAbstractions
 using FiniteDiffWENO5
+```
+
+That way, the two functions `WENOScheme()` and `WENO_step!()` will automatically dispatch to the array types if the argument `backend` is provided. See the KernelAbstractions.jl documentation for more details on how to set up the GPU backend.
+
+
+
 
 nx = 400
 
@@ -97,49 +104,3 @@ display(f)
 which outputs:
 
 ![1D advection](./assets/1D_linear_advection.png)
-
-## Advecting multiple fields
-
-If you have multiple scalar fields (e.g. different chemical components) that share the same velocity, you can advect them all in a single call by passing a tuple of arrays. The same `WENOScheme` buffers are reused for each field, so there is no extra memory overhead.
-
-Each field gets its own `u_min` / `u_max` bounds for the Zhang-Shu limiter, passed as tuples matching the number of fields.
-
-```julia
-using FiniteDiffWENO5
-
-nx = 200
-ny = 200
-Lx = 1.0
-Δx = Lx / nx
-Δy = Lx / ny
-
-# Three chemical components with different initial distributions
-c1 = rand(nx, ny)    # component 1
-c2 = zeros(nx, ny)   # component 2
-c3 = ones(nx, ny)    # component 3
-
-# Shared velocity field
-v = (; x = ones(nx, ny), y = 0.5 .* ones(nx, ny))
-
-# Create the WENO scheme from any one of the fields (they must all have the same size/type)
-weno = WENOScheme(c1; boundary = (2, 2, 2, 2), stag = false)
-
-Δt = 0.7 * min(Δx, Δy)^(5 / 3)
-
-# Advect all three fields in one call
-WENO_step!((c1, c2, c3), v, weno, Δt, Δx, Δy;
-    u_min = (0.0, 0.0, 0.0),
-    u_max = (1.0, 1.0, 1.0))
-```
-
-This also works with KernelAbstractions and Chmy backends — just pass the extra backend/grid arguments as usual:
-
-```julia
-# KernelAbstractions
-WENO_step!((c1, c2, c3), v, weno, Δt, Δx, Δy, backend;
-    u_min = (0.0, 0.0, 0.0), u_max = (1.0, 1.0, 1.0))
-
-# Chmy
-WENO_step!((c1, c2, c3), v, weno, Δt, Δx, Δy, grid, arch;
-    u_min = (0.0, 0.0, 0.0), u_max = (1.0, 1.0, 1.0))
-```

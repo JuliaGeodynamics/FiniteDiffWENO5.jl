@@ -24,7 +24,7 @@ function WENO_step!(u::T, v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}}, weno:
     nx = size(u, 1)
     Δx_ = inv(Δx)
 
-    @unpack ut, du, stag, fl, fr, multithreading, upwind_mode = weno
+    (; ut, du, stag, fl, fr, multithreading, upwind_mode) = weno
 
     if !upwind_mode
         WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
@@ -53,5 +53,23 @@ function WENO_step!(u::T, v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}}, weno:
         upwind_update_1D!(u, v, weno, nx, Δx_, Δt)
     end
 
+    return nothing
+end
+
+"""
+    WENO_step!(u::Tuple{Vararg{Vector{<:Real}}},
+               v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}},
+               weno::WENOScheme,
+               Δt, Δx;
+               u_min::Tuple{Vararg{Real}},
+               u_max::Tuple{Vararg{Real}})
+
+Advance multiple fields `u = (c1, c2, ...)` by one time step, all sharing the same velocity `v` and `WENOScheme` buffers.
+Each field is advected sequentially with its own `u_min` / `u_max` bounds for the Zhang-Shu limiter.
+"""
+function WENO_step!(u::Tuple{Vararg{Vector{<:Real}}}, v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}}, weno::WENOScheme, Δt, Δx; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
+    for i in eachindex(u)
+        WENO_step!(u[i], v, weno, Δt, Δx; u_min = u_min[i], u_max = u_max[i])
+    end
     return nothing
 end
