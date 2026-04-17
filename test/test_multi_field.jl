@@ -233,4 +233,64 @@
         @test u1_multi ≈ u1_single
         @test u2_multi ≈ u2_single
     end
+
+    @testset "1D multi-field Chmy CPU equivalence" begin
+        backend = CPU()
+        nx = 200
+        x_min = -1.0
+        x_max = 1.0
+        Lx = x_max - x_min
+        x = range(x_min, stop = x_max, length = nx)
+
+        arch = Arch(backend)
+        grid = UniformGrid(arch; origin = (x_min,), extent = (Lx,), dims = (nx,))
+
+        CFL = 0.4
+        period = 1
+
+        u1_init = zeros(nx)
+        u2_init = zeros(nx)
+        for i in 1:nx
+            u1_init[i] = exp(-((x[i] - 0.0)^2) / 0.01)
+            u2_init[i] = exp(-((x[i] + 0.3)^2) / 0.02)
+        end
+
+        u1_single = Field(backend, grid, Center())
+        u2_single = Field(backend, grid, Center())
+        u1_multi  = Field(backend, grid, Center())
+        u2_multi  = Field(backend, grid, Center())
+        set!(u1_single, u1_init)
+        set!(u2_single, u2_init)
+        set!(u1_multi,  u1_init)
+        set!(u2_multi,  u2_init)
+
+        weno = WENOScheme(u1_single, grid; boundary = (2, 2), stag = true)
+
+        a_vec = ones(nx + 1)
+        a = VectorField(backend, grid)
+        set!(a, a_vec)
+
+        Δx = x[2] - x[1]
+        Δt = CFL * Δx^(5 / 3)
+        tmax = period * (Lx + Δx) / maximum(abs.(a.x))
+
+        t = 0.0
+        while t < tmax
+            WENO_step!(u1_single, a, weno, Δt, Δx, grid, arch; u_min = 0.0, u_max = 1.0)
+            WENO_step!(u2_single, a, weno, Δt, Δx, grid, arch; u_min = 0.0, u_max = 1.0)
+
+            WENO_step!(
+                (u1_multi, u2_multi), a, weno, Δt, Δx, grid, arch;
+                u_min = (0.0, 0.0), u_max = (1.0, 1.0)
+            )
+
+            t += Δt
+            if t + Δt > tmax
+                Δt = tmax - t
+            end
+        end
+
+        @test interior(u1_multi) ≈ interior(u1_single)
+        @test interior(u2_multi) ≈ interior(u2_single)
+    end
 end
