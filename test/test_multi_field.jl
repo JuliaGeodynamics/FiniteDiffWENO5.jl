@@ -40,8 +40,10 @@
             WENO_step!(u3_single, a, weno, Δt, Δx; u_min = -1.0, u_max = 2.0)
 
             # Multi-field call
-            WENO_step!((u1_multi, u2_multi, u3_multi), a, weno, Δt, Δx;
-                u_min = (0.0, 0.0, -1.0), u_max = (1.0, 1.0, 2.0))
+            WENO_step!(
+                (u1_multi, u2_multi, u3_multi), a, weno, Δt, Δx;
+                u_min = (0.0, 0.0, -1.0), u_max = (1.0, 1.0, 2.0)
+            )
 
             t += Δt
             if t + Δt > tmax
@@ -102,8 +104,10 @@
             WENO_step!(u1_single, v, weno, Δt, Δx, Δy; u_min = 0.0, u_max = 1.0)
             WENO_step!(u2_single, v, weno, Δt, Δx, Δy; u_min = 0.0, u_max = 1.0)
 
-            WENO_step!((u1_multi, u2_multi), v, weno, Δt, Δx, Δy;
-                u_min = (0.0, 0.0), u_max = (1.0, 1.0))
+            WENO_step!(
+                (u1_multi, u2_multi), v, weno, Δt, Δx, Δy;
+                u_min = (0.0, 0.0), u_max = (1.0, 1.0)
+            )
 
             t += Δt
             if t + Δt > tmax
@@ -164,8 +168,10 @@
             WENO_step!(u1_single, v, weno, Δt, Δx, Δy, Δz; u_min = 0.0, u_max = 1.0)
             WENO_step!(u2_single, v, weno, Δt, Δx, Δy, Δz; u_min = 0.0, u_max = 1.0)
 
-            WENO_step!((u1_multi, u2_multi), v, weno, Δt, Δx, Δy, Δz;
-                u_min = (0.0, 0.0), u_max = (1.0, 1.0))
+            WENO_step!(
+                (u1_multi, u2_multi), v, weno, Δt, Δx, Δy, Δz;
+                u_min = (0.0, 0.0), u_max = (1.0, 1.0)
+            )
 
             t += Δt
             if t + Δt > tmax
@@ -213,8 +219,10 @@
             WENO_step!(u1_single, a, weno, Δt, Δx, backend; u_min = 0.0, u_max = 1.0)
             WENO_step!(u2_single, a, weno, Δt, Δx, backend; u_min = 0.0, u_max = 1.0)
 
-            WENO_step!((u1_multi, u2_multi), a, weno, Δt, Δx, backend;
-                u_min = (0.0, 0.0), u_max = (1.0, 1.0))
+            WENO_step!(
+                (u1_multi, u2_multi), a, weno, Δt, Δx, backend;
+                u_min = (0.0, 0.0), u_max = (1.0, 1.0)
+            )
 
             t += Δt
             if t + Δt > tmax
