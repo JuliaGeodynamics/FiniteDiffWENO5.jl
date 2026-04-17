@@ -25,7 +25,7 @@ function main(; nx = 400, ny = 400)
     x0 = 1 / 4
     c_width1 = 0.08
     c_width2 = 0.06
-    c_width3 = 0.10
+    c_width3 = 0.1
 
     c1 = zeros(ny, nx)
     c2 = zeros(ny, nx)
@@ -65,9 +65,11 @@ function main(; nx = 400, ny = 400)
 
     while t < tmax
         # Advect all 3 components in a single call
-        WENO_step!((c1, c2, c3), v, weno, Δt, Δx, Δy;
+        WENO_step!(
+            (c1, c2, c3), v, weno, Δt, Δx, Δy;
             u_min = (0.0, 0.0, 0.0),
-            u_max = (1.0, 1.0, 1.0))
+            u_max = (1.0, 1.0, 1.0)
+        )
 
         t += Δt
 
