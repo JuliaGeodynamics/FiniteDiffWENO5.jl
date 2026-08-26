@@ -1,6 +1,6 @@
 module ChmyExt
 using FiniteDiffWENO5
-using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind, validate_boundary, left_index, right_index
+using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind, validate_boundary, left_index, right_index, inflow_value
 using MuladdMacro
 using Chmy
 using KernelAbstractions
@@ -17,26 +17,30 @@ const Velocity3D = Union{NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractField{<
 """
 WENOScheme(u::AbstractField{T, N},
            grid::StructuredGrid;
-           boundary=(2, 2), stag=true) where {T, N}
+           boundary=nothing, stag=true) where {T, N}
 
 Create a WENO scheme structure for the given field `u` on the specified `grid` using Chmy.jl.
 
 # Arguments
 - `c0::AbstractField{T, N}`: Input field for which the WENO scheme is to be created. Only used to get the type and size.
 - `grid::StructuredGrid`: Computational grid.
-- `boundary::NTuple{2N, Int}`: Tuple specifying the boundary conditions for each dimension (0: homogeneous Dirichlet, 1: homogeneous Neumann, 2: periodic). Default is periodic (2).
+- `boundary`: Ordered tuple of typed advection boundaries or an
+  `AdvectionBC`. The default is `ExtrapolateBC()` on every face.
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers).
 """
-function WENOScheme(c0::AbstractField{T, N}, grid::StructuredGrid; boundary::NTuple = (2, 2), stag::Bool = true, lim_ZS::Bool = false, upwind_mode = false) where {T, N}
+function WENOScheme(c0::AbstractField{T, N}, grid::StructuredGrid; boundary = nothing, stag::Bool = true, lim_ZS::Bool = false, upwind_mode = false) where {T, N}
 
-    validate_boundary(boundary, N)
+    boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))
+    sizes = ntuple(i -> grid.axes[i].length, N)
+    boundary = validate_boundary(boundary, N, sizes)
+    upwind_mode && any(b -> b isa PrescribedInflowBC, boundary) && throw(
+        ArgumentError("PrescribedInflowBC is supported by WENO5 reconstruction, " *
+                      "but not by upwind_mode"))
 
     # multithreading is always on in this case with chmy.jl
     multithreading = true
 
     backend = get_backend(c0)
-
-    N_boundary = 2 * N
 
     fl = VectorField(backend, grid)
     fr = VectorField(backend, grid)
@@ -46,7 +50,7 @@ function WENOScheme(c0::AbstractField{T, N}, grid::StructuredGrid; boundary::NTu
     TFlux = typeof(fl)
     TArray = typeof(du)
 
-    return WENOScheme{T, TArray, TFlux, N_boundary}(stag = stag, boundary = boundary, multithreading = multithreading, lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut, upwind_mode = upwind_mode)
+    return WENOScheme{T, TArray, TFlux, typeof(boundary)}(stag = stag, boundary = boundary, multithreading = multithreading, lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut, upwind_mode = upwind_mode)
 end
 
 function WENOScheme(c0::AbstractField; kwargs...)

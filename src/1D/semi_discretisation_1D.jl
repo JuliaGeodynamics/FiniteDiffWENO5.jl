@@ -1,13 +1,13 @@
 function WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
     (; boundary, χ, γ, ζ, ϵ, multithreading, lim_ZS) = weno
 
-    bL = Val(boundary[1])
-    bR = Val(boundary[2])
+    bL = boundary[1]
+    bR = boundary[2]
 
     # small number to avoid division by zero
     ϵθ = 1.0e-18
 
-    return @inbounds @maybe_threads multithreading for i in axes(fl.x, 1)
+    @inbounds @maybe_threads multithreading for i in axes(fl.x, 1)
         iwww = left_index(i, 3, nx, bL)
         iww = left_index(i, 2, nx, bL)
         iw = left_index(i, 1, nx, bL)
@@ -32,6 +32,8 @@ function WENO_flux!(fl, fr, u, weno, nx, u_min, u_max)
             fr.x[i] = zhang_shu_limit(fr.x[i], u4, u_min, u_max, ϵθ)
         end
     end
+    apply_inflow_boundaries!(fl, fr, boundary)
+    return nothing
 end
 
 
@@ -72,8 +74,8 @@ using velocity field `v` on a staggered or collocated grid.
 function upwind_update_1D!(u, v, weno, nx, Δx_, Δt)
     (; boundary, stag, multithreading) = weno
 
-    bL = Val(boundary[1])
-    bR = Val(boundary[2])
+    bL = boundary[1]
+    bR = boundary[2]
 
     @inbounds @maybe_threads multithreading for i in axes(u, 1)
         iL = left_index(i - 1, 0, nx, bL)

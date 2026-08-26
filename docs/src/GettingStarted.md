@@ -56,11 +56,11 @@ u0_vec[idx] .= (1 / 6) .* (F(x[idx], α, a - δ) .+ 4 .* F(x[idx], α, a) .+ F(x
 
 u = copy(u0_vec)
 
-# fix here boundary to periodic when equal to 2
+# Periodic boundaries on both faces.
 # staggering = true means that the advection velocity is defined on the sides of the cells and should be of size nx+1 compared to the scalar field u.
 # Multithreading to false means that the computations will be done on a single thread.
 # Set to true to enable multithreading if the Julia session was started with multiple threads (e.g. `julia -t 4`).
-weno = WENOScheme(u; boundary = (2, 2), stag = true, multithreading = false)
+weno = WENOScheme(u; boundary = (PeriodicBC(), PeriodicBC()), stag = true, multithreading = false)
 
 # advection velocity with size nx+1 for staggered grid (here constant)
 a = (; x = ones(nx + 1))
@@ -97,6 +97,24 @@ display(f)
 which outputs:
 
 ![1D advection](./assets/1D_linear_advection.png)
+
+## Boundary conditions
+
+Use `PeriodicBC()` for wrapped domains, `ExtrapolateBC()` for open boundaries, and
+`PrescribedInflowBC(value)` to prescribe the exterior state only where the
+normal velocity enters the domain. In 2D, boundary tuples are ordered as
+`(west, east, bottom, top)`. `value` may be a scalar or a vector along the
+face.
+
+```julia
+bc = AdvectionBC(
+    west = PrescribedInflowBC(fill(300.0, ny)),
+    east = ExtrapolateBC(),
+    bot = ExtrapolateBC(),
+    top = ExtrapolateBC(),
+)
+weno = WENOScheme(u; boundary = bc, stag = true)
+```
 
 ## Advecting multiple fields
 

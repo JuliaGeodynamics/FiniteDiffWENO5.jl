@@ -30,6 +30,13 @@
             fl[i, j, k] = zhang_shu_limit(fl[i, j, k], u3, u_min, u_max, ϵθ)
             fr[i, j, k] = zhang_shu_limit(fr[i, j, k], u4, u_min, u_max, ϵθ)
         end
+
+        if i == 1 && boundary[1] isa PrescribedInflowBC
+            fl[i, j, k] = inflow_value(boundary[1], j, k)
+        end
+        if i == nx + 1 && boundary[2] isa PrescribedInflowBC
+            fr[i, j, k] = inflow_value(boundary[2], j, k)
+        end
     end
 end
 
@@ -65,6 +72,13 @@ end
             fl[i, j, k] = zhang_shu_limit(fl[i, j, k], u3, u_min, u_max, ϵθ)
             fr[i, j, k] = zhang_shu_limit(fr[i, j, k], u4, u_min, u_max, ϵθ)
         end
+
+        if j == 1 && boundary[3] isa PrescribedInflowBC
+            fl[i, j, k] = inflow_value(boundary[3], i, k)
+        end
+        if j == ny + 1 && boundary[4] isa PrescribedInflowBC
+            fr[i, j, k] = inflow_value(boundary[4], i, k)
+        end
     end
 end
 
@@ -99,6 +113,13 @@ end
 
             fl[i, j, k] = zhang_shu_limit(fl[i, j, k], u3, u_min, u_max, ϵθ)
             fr[i, j, k] = zhang_shu_limit(fr[i, j, k], u4, u_min, u_max, ϵθ)
+        end
+
+        if k == 1 && boundary[5] isa PrescribedInflowBC
+            fl[i, j, k] = inflow_value(boundary[5], i, j)
+        end
+        if k == nz + 1 && boundary[6] isa PrescribedInflowBC
+            fr[i, j, k] = inflow_value(boundary[6], i, j)
         end
     end
 end

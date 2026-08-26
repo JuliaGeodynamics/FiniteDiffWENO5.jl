@@ -1,10 +1,10 @@
 function WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
     (; boundary, χ, γ, ζ, ϵ, multithreading, lim_ZS) = weno
 
-    bLx = Val(boundary[1])
-    bRx = Val(boundary[2])
-    bLy = Val(boundary[3])
-    bRy = Val(boundary[4])
+    bLx = boundary[1]
+    bRx = boundary[2]
+    bLy = boundary[3]
+    bRy = boundary[4]
 
     ϵθ = 1.0e-18  # small number to avoid division by zero for limiter
 
@@ -68,7 +68,7 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
     end
 
     # Handle last row for y-direction (top boundary)
-    return @inbounds @maybe_threads multithreading for i in axes(fl.y, 1)
+    @inbounds @maybe_threads multithreading for i in axes(fl.y, 1)
         j = ny + 1
 
         jwww = left_index(j, 3, ny, bLy)
@@ -89,6 +89,8 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
             fr.y[i, j] = zhang_shu_limit(fr.y[i, j], u4, u_min, u_max, ϵθ)
         end
     end
+    apply_inflow_boundaries!(fl, fr, boundary)
+    return nothing
 end
 
 function semi_discretisation_weno5!(du::T, v, weno::WENOScheme, Δx_, Δy_) where {T <: AbstractArray{<:Real, 2}}
@@ -134,10 +136,10 @@ function upwind_update_2D!(
     )
     (; boundary, stag, multithreading) = weno
 
-    bLx = Val(boundary[1])
-    bRx = Val(boundary[2])
-    bLy = Val(boundary[3])
-    bRy = Val(boundary[4])
+    bLx = boundary[1]
+    bRx = boundary[2]
+    bLy = boundary[3]
+    bRy = boundary[4]
 
     @inbounds @maybe_threads multithreading for I in CartesianIndices(u)
         i, j = Tuple(I)

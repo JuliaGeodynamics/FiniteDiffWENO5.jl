@@ -1,6 +1,6 @@
 abstract type AbstractWENO end
 
-@kwdef struct WENOScheme{T, TArray, TFlux, N_boundary} <: AbstractWENO
+@kwdef struct WENOScheme{T, TArray, TFlux, TBoundary} <: AbstractWENO
     # upwind and downwind constants
     γ::NTuple{3, T} = T.((0.1, 0.6, 0.3))
     # betas' constants
@@ -14,7 +14,7 @@ abstract type AbstractWENO end
     # use Zhang-Shu limiter
     lim_ZS::Bool
     # boundary conditions
-    boundary::NTuple{N_boundary, Int}
+    boundary::TBoundary
     # multithreading
     multithreading::Bool
     # simple upwind for debugging
@@ -29,13 +29,17 @@ abstract type AbstractWENO end
 end
 
 """
-    WENOScheme(c0::AbstractArray{T, N}; boundary::NTuple=ntuple(i -> 0, N*2), stag::Bool=false,  multithreading::Bool=false) where {T, N}
+    WENOScheme(c0::AbstractArray{T, N}; boundary=nothing, stag=false,
+               multithreading=true, lim_ZS=false, upwind_mode=false) where {T, N}
 
 Structure containing the Weighted Essentially Non-Oscillatory (WENO) scheme of order 5 constants and arrays for N-dimensional data of type T. The formulation is from Borges et al. 2008.
 
 # Arguments
 - `c0::AbstractArray{T, N}`: The input field for which the WENO scheme is to be created. Only used to get the type and size.
-- `boundary::NTuple{2N, Int}`: A tuple specifying the boundary conditions for each dimension (0: homogeneous Dirichlet, 1: homogeneous Neumann, 2: periodic). Default to homogeneous Dirichlet (0).
+- `boundary`: Ordered tuple of `ExtrapolateBC()`, `PeriodicBC()`, or
+  `PrescribedInflowBC(value)` conditions, or an `AdvectionBC`. The default is
+  `ExtrapolateBC()` on every face. Legacy integer tuples remain accepted: `0`
+  and `1` map to `ExtrapolateBC()`, and `2` maps to `PeriodicBC()`.
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers). Default to false.
 - `lim_ZS::Bool`: Whether to use the Zhang-Shu (2010) limiter. Default to false.
 - `multithreading::Bool`: Whether to use multithreading (only for 2D and 3D). Default to true.
@@ -47,7 +51,7 @@ Structure containing the Weighted Essentially Non-Oscillatory (WENO) scheme of o
 - `ζ::NTuple{5, T}`: Stencil weights.
 - `ϵ::T`: Tolerance, fixed to machine precision.
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers).
-- `boundary::NTuple{N_boundary, Int}`: Boundary conditions for each dimension (0: homogeneous Dirichlet, 1: homogeneous Neumann, 2: periodic). Default to homogeneous Dirichlet.
+- `boundary`: Normalized tuple of typed advection boundary conditions.
 - `lim_ZS::Bool`: Whether to use the Zhang-Shu limiter.
 - `multithreading::Bool`: Whether to use multithreading (only for 2D and 3D).
 - `fl::NamedTuple`: Fluxes in the left direction for each dimension.
@@ -55,9 +59,13 @@ Structure containing the Weighted Essentially Non-Oscillatory (WENO) scheme of o
 - `du::AbstractArray{T, N}`: Semi-discretisation of the advection term.
 - `ut::AbstractArray{T, N}`: Temporary array for intermediate calculations using Runge-Kutta.
 """
-function WENOScheme(c0::AbstractArray{T, N}; boundary::NTuple = ntuple(i -> 0, N * 2), stag::Bool = false, lim_ZS::Bool = false, multithreading::Bool = true, upwind_mode::Bool = false) where {T, N}
+function WENOScheme(c0::AbstractArray{T, N}; boundary = nothing, stag::Bool = false, lim_ZS::Bool = false, multithreading::Bool = true, upwind_mode::Bool = false) where {T, N}
 
-    validate_boundary(boundary, N)
+    boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))
+    boundary = validate_boundary(boundary, N, size(c0))
+    upwind_mode && any(b -> b isa PrescribedInflowBC, boundary) && throw(
+        ArgumentError("PrescribedInflowBC is supported by WENO5 reconstruction, " *
+                      "but not by upwind_mode"))
 
     # dimension labels
     labels = (:x, :y, :z)[1:min(N, 3)]
@@ -76,11 +84,8 @@ function WENOScheme(c0::AbstractArray{T, N}; boundary::NTuple = ntuple(i -> 0, N
     # temporary array for Runge-Kutta
     ut = zeros_like(sizes)
 
-    # boundary conditions tuple length
-    N_boundary = length(boundary)
-
     TFlux = typeof(fl)
     TArray = typeof(du)
 
-    return WENOScheme{T, TArray, TFlux, N_boundary}(stag = stag, boundary = boundary, lim_ZS = lim_ZS, multithreading = multithreading, upwind_mode = upwind_mode, fl = fl, fr = fr, du = du, ut = ut)
+    return WENOScheme{T, TArray, TFlux, typeof(boundary)}(stag = stag, boundary = boundary, lim_ZS = lim_ZS, multithreading = multithreading, upwind_mode = upwind_mode, fl = fl, fr = fr, du = du, ut = ut)
 end

@@ -1,6 +1,6 @@
 module KAExt
 using FiniteDiffWENO5
-using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind, validate_boundary, flux_size, left_index, right_index
+using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind, validate_boundary, flux_size, left_index, right_index, inflow_value
 using MuladdMacro
 using KernelAbstractions
 
@@ -23,28 +23,31 @@ Base.:+(tp, off::Offset) = off + tp
 const Offset0 = Offset{(0,)}()
 
 """
-WENOScheme(c0::AbstractArray{T, N}, backend::Backend; boundary=(2, 2), stag=true) where {T, N}
+WENOScheme(c0::AbstractArray{T, N}, backend::Backend; boundary=nothing, stag=true) where {T, N}
 
 Create a WENO scheme structure for the given field `c` using the specified `backend` from KernelAbstractions.jl.
 
 # Arguments
 - `c0::AbstractArray{T, N}`: The input field for which the WENO scheme is to be created. Only used to get the type and size.
 - `backend::Backend`: The KernelAbstractions backend to be used (e.g., CPU(), CUDA(), etc.).
-- `boundary::NTuple{2N, Int}`: A tuple specifying the boundary conditions for each dimension (0: homogeneous Dirichlet, 1: homogeneous Neumann, 2: periodic). Default is periodic (2).
+- `boundary`: Ordered tuple of typed advection boundaries or an
+  `AdvectionBC`. The default is `ExtrapolateBC()` on every face.
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers).
 """
-function WENOScheme(c0::AbstractArray{T, N}, backend::Backend; boundary::NTuple = (2, 2), stag::Bool = true, lim_ZS::Bool = false, upwind_mode::Bool = false) where {T, N}
+function WENOScheme(c0::AbstractArray{T, N}, backend::Backend; boundary = nothing, stag::Bool = true, lim_ZS::Bool = false, upwind_mode::Bool = false) where {T, N}
 
     @assert get_backend(c0) == backend "The type of the input field must match the specified backend."
 
-    validate_boundary(boundary, N)
+    boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))
+    boundary = validate_boundary(boundary, N, size(c0))
+    upwind_mode && any(b -> b isa PrescribedInflowBC, boundary) && throw(
+        ArgumentError("PrescribedInflowBC is supported by WENO5 reconstruction, " *
+                      "but not by upwind_mode"))
 
     # multithreading is always on in this case
     multithreading = true
 
     backend = get_backend(c0)
-
-    N_boundary = length(boundary)
 
     # construct NamedTuples for left and right fluxes
     labels = (:x, :y, :z)[1:min(N, 3)]
@@ -58,7 +61,7 @@ function WENOScheme(c0::AbstractArray{T, N}, backend::Backend; boundary::NTuple 
     TFlux = typeof(fl)
     TArray = typeof(du)
 
-    return WENOScheme{T, TArray, TFlux, N_boundary}(stag = stag, boundary = boundary, multithreading = multithreading, lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut, upwind_mode = upwind_mode)
+    return WENOScheme{T, TArray, TFlux, typeof(boundary)}(stag = stag, boundary = boundary, multithreading = multithreading, lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut, upwind_mode = upwind_mode)
 end
 
 include("KAExt1D.jl")

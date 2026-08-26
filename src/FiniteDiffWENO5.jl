@@ -3,8 +3,10 @@ module FiniteDiffWENO5
 using MuladdMacro
 
 export WENOScheme, WENO_step!
+export AbstractAdvectionBoundary, PeriodicBC, ExtrapolateBC, PrescribedInflowBC, AdvectionBC
 
 include("utils.jl")
+include("boundaries.jl")
 include("WENO5/cache.jl")
 include("WENO5/reconstruction.jl")
 include("limiter/zhang_shu_limiter.jl")

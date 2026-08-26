@@ -28,6 +28,13 @@
         fl[i] = zhang_shu_limit(fl[i], u3, u_min, u_max, ϵθ)
         fr[i] = zhang_shu_limit(fr[i], u4, u_min, u_max, ϵθ)
     end
+
+    if i == 1 && boundary[1] isa PrescribedInflowBC
+        fl[i] = inflow_value(boundary[1])
+    end
+    if i == nx + 1 && boundary[2] isa PrescribedInflowBC
+        fr[i] = inflow_value(boundary[2])
+    end
 end
 
 @kernel inbounds = true function WENO_semi_discretisation_weno5_KA_1D!(du, fl, fr, v, stag, Δx_, g, O)

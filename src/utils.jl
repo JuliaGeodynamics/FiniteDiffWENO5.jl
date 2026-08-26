@@ -54,13 +54,6 @@ macro maybe_threads(flag, ex)
     return esc(:(($flag) ? (Base.Threads.@threads $ex) : $ex))
 end
 
-# validate a `WENOScheme` boundary tuple for N-dimensional data
-@inline function validate_boundary(boundary, N)
-    @assert length(boundary) == 2N "Boundary conditions must be a tuple of length $(2N) for $(N)D data."
-    @assert all(b in (0, 1, 2) for b in boundary) "Boundary conditions must be either 0 (homogeneous Dirichlet), 1 (homogeneous Neumann) or 2 (periodic)."
-    return nothing
-end
-
 # size of the flux array staggered by one in dimension `d`, for N-dimensional data of shape `sizes`
 @inline flux_size(sizes::NTuple, d, N) = ntuple(i -> sizes[i] + (i == d ? 1 : 0), min(N, 3))
 

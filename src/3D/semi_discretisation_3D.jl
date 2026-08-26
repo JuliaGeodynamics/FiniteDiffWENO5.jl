@@ -1,12 +1,12 @@
 function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
     (; boundary, χ, γ, ζ, ϵ, multithreading, lim_ZS) = weno
 
-    bLx = Val(boundary[1])
-    bRx = Val(boundary[2])
-    bLy = Val(boundary[3])
-    bRy = Val(boundary[4])
-    bLz = Val(boundary[5])
-    bRz = Val(boundary[6])
+    bLx = boundary[1]
+    bRx = boundary[2]
+    bLy = boundary[3]
+    bRy = boundary[4]
+    bLz = boundary[5]
+    bRz = boundary[6]
 
     ϵθ = 1.0e-18  # small number to avoid division by zero for limiter
 
@@ -144,6 +144,7 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
         end
     end
 
+    apply_inflow_boundaries!(fl, fr, boundary)
     return nothing
 end
 
@@ -199,12 +200,12 @@ function upwind_update_3D!(
     )
     (; boundary, stag, multithreading) = weno
 
-    bLx = Val(boundary[1])
-    bRx = Val(boundary[2])
-    bLy = Val(boundary[3])
-    bRy = Val(boundary[4])
-    bLz = Val(boundary[5])
-    bRz = Val(boundary[6])
+    bLx = boundary[1]
+    bRx = boundary[2]
+    bLy = boundary[3]
+    bRy = boundary[4]
+    bLz = boundary[5]
+    bRz = boundary[6]
 
     @inbounds @maybe_threads multithreading for I in CartesianIndices(u)
         i, j, k = Tuple(I)
