@@ -29,13 +29,13 @@ abstract type AbstractWENO end
 end
 
 """
-    WENOScheme(c0::Array{T, N}; boundary::NTuple=ntuple(i -> 0, N*2), stag::Bool=false,  multithreading::Bool=false) where {T, N}
+    WENOScheme(c0::AbstractArray{T, N}; boundary::NTuple=ntuple(i -> 0, N*2), stag::Bool=false,  multithreading::Bool=false) where {T, N}
 
 Structure containing the Weighted Essentially Non-Oscillatory (WENO) scheme of order 5 constants and arrays for N-dimensional data of type T. The formulation is from Borges et al. 2008.
 
 # Arguments
-- `c0::Array{T, N}`: The input field for which the WENO scheme is to be created. Only used to get the type and size.
-- `boundary::NTuple{2N, Int}`: A tuple specifying the boundary conditions for each dimension (0: homogeneous Neumann, 1: homogeneous Dirichlet, 2: periodic). Default to homogeneous Neumann (0).
+- `c0::AbstractArray{T, N}`: The input field for which the WENO scheme is to be created. Only used to get the type and size.
+- `boundary::NTuple{2N, Int}`: A tuple specifying the boundary conditions for each dimension (0: homogeneous Dirichlet, 1: homogeneous Neumann, 2: periodic). Default to homogeneous Dirichlet (0).
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers). Default to false.
 - `lim_ZS::Bool`: Whether to use the Zhang-Shu (2010) limiter. Default to false.
 - `multithreading::Bool`: Whether to use multithreading (only for 2D and 3D). Default to true.
@@ -47,42 +47,37 @@ Structure containing the Weighted Essentially Non-Oscillatory (WENO) scheme of o
 - `ζ::NTuple{5, T}`: Stencil weights.
 - `ϵ::T`: Tolerance, fixed to machine precision.
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers).
-- `boundary::NTuple{N_boundary, Int}`: Boundary conditions for each dimension (0: homogeneous Neumann, 1: homogeneous Dirichlet, 2: periodic). Default to homogeneous Neumann.
+- `boundary::NTuple{N_boundary, Int}`: Boundary conditions for each dimension (0: homogeneous Dirichlet, 1: homogeneous Neumann, 2: periodic). Default to homogeneous Dirichlet.
 - `lim_ZS::Bool`: Whether to use the Zhang-Shu limiter.
 - `multithreading::Bool`: Whether to use multithreading (only for 2D and 3D).
 - `fl::NamedTuple`: Fluxes in the left direction for each dimension.
 - `fr::NamedTuple`: Fluxes in the right direction for each dimension.
-- `du::Array{T, N}`: Semi-discretisation of the advection term.
-- `ut::Array{T, N}`: Temporary array for intermediate calculations using Runge-Kutta.
+- `du::AbstractArray{T, N}`: Semi-discretisation of the advection term.
+- `ut::AbstractArray{T, N}`: Temporary array for intermediate calculations using Runge-Kutta.
 """
-function WENOScheme(c0::Array{T, N}; boundary::NTuple = ntuple(i -> 0, N * 2), stag::Bool = false, lim_ZS::Bool = false, multithreading::Bool = true, upwind_mode::Bool = false) where {T, N}
+function WENOScheme(c0::AbstractArray{T, N}; boundary::NTuple = ntuple(i -> 0, N * 2), stag::Bool = false, lim_ZS::Bool = false, multithreading::Bool = true, upwind_mode::Bool = false) where {T, N}
 
-    # check that boundary conditions are correctly defined
-    @assert length(boundary) == 2N "Boundary conditions must be a tuple of length $(2N) for $(N)D data."
-    # check that boundary conditions are either 0 (homogeneous Neumann) or 1 (homogeneous Dirichlet) or 2 (periodic)
-    @assert all(b in (0, 1, 2) for b in boundary) "Boundary conditions must be either 0 (homogeneous Neumann), 1 (homogeneous Dirichlet) or 2 (periodic)."
+    validate_boundary(boundary, N)
 
     # dimension labels
     labels = (:x, :y, :z)[1:min(N, 3)]
     sizes = size(c0)
 
-    # helper to expand size in a given dimension
-    function flux_size(d)
-        return ntuple(i -> sizes[i] + (i == d ? 1 : 0), min(N, 3))
-    end
+    # allocate a zeroed buffer of the same array type as `c0`
+    zeros_like(dims) = fill!(similar(c0, T, dims), zero(T))
 
     # construct NamedTuples for left and right fluxes
-    fl = NamedTuple{labels}(ntuple(d -> zeros(T, flux_size(d)), min(N, 3)))
-    fr = NamedTuple{labels}(ntuple(d -> zeros(T, flux_size(d)), min(N, 3)))
+    fl = NamedTuple{labels}(ntuple(d -> zeros_like(flux_size(sizes, d, N)), min(N, 3)))
+    fr = NamedTuple{labels}(ntuple(d -> zeros_like(flux_size(sizes, d, N)), min(N, 3)))
 
     # semi-discretisation array
-    du = zeros(T, size(c0))
+    du = zeros_like(sizes)
 
     # temporary array for Runge-Kutta
-    ut = zeros(T, size(c0))
+    ut = zeros_like(sizes)
 
     # boundary conditions tuple length
-    N_boundary = 2 * N
+    N_boundary = length(boundary)
 
     TFlux = typeof(fl)
     TArray = typeof(du)

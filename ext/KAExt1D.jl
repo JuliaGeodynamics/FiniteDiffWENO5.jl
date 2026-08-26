@@ -4,35 +4,12 @@
     I = I + O
     i = I[1]
 
-    # Left boundary condition
-    if boundary[1] == 0       # Dirichlet
-        iwww = clamp(i - 3, 1, nx)
-        iww = clamp(i - 2, 1, nx)
-        iw = clamp(i - 1, 1, nx)
-    elseif boundary[1] == 1   # Neumann
-        iwww = max(i - 3, 1)
-        iww = max(i - 2, 1)
-        iw = max(i - 1, 1)
-    elseif boundary[1] == 2   # Periodic
-        iwww = mod1(i - 3, nx)
-        iww = mod1(i - 2, nx)
-        iw = mod1(i - 1, nx)
-    end
-
-    # Right boundary condition
-    if boundary[2] == 0
-        ie = clamp(i, 1, nx)
-        iee = clamp(i + 1, 1, nx)
-        ieee = clamp(i + 2, 1, nx)
-    elseif boundary[2] == 1
-        ie = min(i, nx)
-        iee = min(i + 1, nx)
-        ieee = min(i + 2, nx)
-    elseif boundary[2] == 2
-        ie = mod1(i, nx)
-        iee = mod1(i + 1, nx)
-        ieee = mod1(i + 2, nx)
-    end
+    iwww = left_index(i, 3, nx, boundary[1])
+    iww = left_index(i, 2, nx, boundary[1])
+    iw = left_index(i, 1, nx, boundary[1])
+    ie = right_index(i, 0, nx, boundary[2])
+    iee = right_index(i, 1, nx, boundary[2])
+    ieee = right_index(i, 2, nx, boundary[2])
 
     u1 = u[iwww]
     u2 = u[iww]
@@ -71,7 +48,6 @@ end
     end
 end
 
-
 @kernel inbounds = true function upwind_update_KA_1D!(
         u, v, nx, Δx_, Δt, stag, boundary, g, O
     )
@@ -79,23 +55,8 @@ end
     I = I + O
     i = I[1]
 
-    # Left boundary condition
-    if boundary[1] == 0       # Dirichlet
-        iL = clamp(i - 1, 1, nx)
-    elseif boundary[1] == 1   # Neumann
-        iL = max(i - 1, 1)
-    elseif boundary[1] == 2   # Periodic
-        iL = mod1(i - 1, nx)
-    end
-
-    # Right boundary condition
-    if boundary[2] == 0
-        iR = clamp(i + 1, 1, nx)
-    elseif boundary[2] == 1
-        iR = min(i + 1, nx)
-    elseif boundary[2] == 2
-        iR = mod1(i + 1, nx)
-    end
+    iL = left_index(i, 1, nx, boundary[1])
+    iR = right_index(i, 1, nx, boundary[2])
 
     if stag
         # velocity defined at faces

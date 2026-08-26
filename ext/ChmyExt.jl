@@ -1,11 +1,17 @@
 module ChmyExt
 using FiniteDiffWENO5
-using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind
+using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind, validate_boundary, left_index, right_index
 using MuladdMacro
 using Chmy
 using KernelAbstractions
 
 import FiniteDiffWENO5: WENOScheme, WENO_step!
+
+# Velocity can be passed either as a plain NamedTuple of fields or as a Chmy `VectorField`
+# (which behaves like a NamedTuple via `getproperty` but isn't one).
+const Velocity1D = Union{NamedTuple{(:x,), <:Tuple{<:AbstractField{<:Real, 1}}}, VectorField{1, <:Tuple{<:AbstractField{<:Real, 1}}}}
+const Velocity2D = Union{NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractField{<:Real}, 2}}}, VectorField{2, <:Tuple{Vararg{AbstractField{<:Real}, 2}}}}
+const Velocity3D = Union{NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractField{<:Real}, 3}}}, VectorField{3, <:Tuple{Vararg{AbstractField{<:Real}, 3}}}}
 
 
 """
@@ -18,15 +24,12 @@ Create a WENO scheme structure for the given field `u` on the specified `grid` u
 # Arguments
 - `c0::AbstractField{T, N}`: Input field for which the WENO scheme is to be created. Only used to get the type and size.
 - `grid::StructuredGrid`: Computational grid.
-- `boundary::NTuple{2N, Int}`: Tuple specifying the boundary conditions for each dimension (0: homogeneous Neumann, 1: homogeneous Dirichlet, 2: periodic). Default is periodic (2).
+- `boundary::NTuple{2N, Int}`: Tuple specifying the boundary conditions for each dimension (0: homogeneous Dirichlet, 1: homogeneous Neumann, 2: periodic). Default is periodic (2).
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers).
 """
 function WENOScheme(c0::AbstractField{T, N}, grid::StructuredGrid; boundary::NTuple = (2, 2), stag::Bool = true, lim_ZS::Bool = false, upwind_mode = false) where {T, N}
 
-    # check that boundary conditions are correctly defined
-    @assert length(boundary) == 2N "Boundary conditions must be a tuple of length $(2N) for $(N)D data."
-    # check that boundary conditions are either 0 (homogeneous Neumann) or 1 (homogeneous Dirichlet) or 2 (periodic)
-    @assert all(b in (0, 1, 2) for b in boundary) "Boundary conditions must be either 0 (homogeneous Neumann), 1 (homogeneous Dirichlet) or 2 (periodic)."
+    validate_boundary(boundary, N)
 
     # multithreading is always on in this case with chmy.jl
     multithreading = true
@@ -72,7 +75,7 @@ include("KAExt3D.jl")
 
 """
     WENO_step!(u::T_field,
-               v::NamedTuple{(:x,), <:Tuple{<:AbstractField{<:Real, 1}}},
+               v::Velocity1D,
                weno::FiniteDiffWENO5.WENOScheme,
                Δt, Δx,
                grid::StructuredGrid, arch;
@@ -82,7 +85,7 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 
 # Arguments
 - `u::T_field`: Current solution field to be updated in place.
-- `v::NamedTuple{(:x,), <:Tuple{<:AbstractField{<:Real, 1}}}`: Velocity field (can be staggered or not based on `weno.stag`). Needs to be a NamedTuple with field `:x`.
+- `v::Velocity1D`: Velocity field (can be staggered or not based on `weno.stag`).
 - `weno::WENOScheme`: WENO scheme structure containing necessary parameters and fields.
 - `Δt`: Time step size.
 - `Δx`: Spatial grid size.
@@ -91,7 +94,7 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
 - `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
-function WENO_step!(u::T_field, v::NamedTuple{(:x,), <:Tuple{<:AbstractField{<:Real, 1}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0) where {T_field <: AbstractField{<:Real, 1}}
+function WENO_step!(u::T_field, v::Velocity1D, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0) where {T_field <: AbstractField{<:Real, 1}}
 
     @assert get_backend(u) == get_backend(v.x)
 
@@ -130,17 +133,17 @@ end
 
 """
     WENO_step!(u::T_field,
-               v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractField{<:Real}, 2}}},
+               v::Velocity2D,
                weno::FiniteDiffWENO5.WENOScheme,
                Δt, Δx,
                grid::StructuredGrid, arch;
-               u_min = 0.0, u_max = 0.0) where T_field <: AbstractField{<:Real} where names
+               u_min = 0.0, u_max = 0.0) where {T_field <: AbstractField{<:Real, 2}}
 
 Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method with WENO5 spatial discretization using Chmy.jl fields in 2D.
 
 # Arguments
 - `u::T_field`: Current solution field to be updated in place.
-- `v::NamedTuple{names, <:Tuple{<:T_field}}`: The velocity field (can be staggered or not based on `weno.stag`).
+- `v::Velocity2D`: The velocity field (can be staggered or not based on `weno.stag`).
 - `weno::WENOScheme`: WENO scheme structure containing necessary parameters and fields.
 - `Δt`: Time step size.
 - `Δx`: Spatial grid size.
@@ -149,7 +152,7 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
 - `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
-function WENO_step!(u::T_field, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractField{<:Real}, 2}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0) where {T_field <: AbstractField{<:Real, 2}}
+function WENO_step!(u::T_field, v::Velocity2D, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0) where {T_field <: AbstractField{<:Real, 2}}
 
     @assert get_backend(u) == get_backend(v.x)
     @assert get_backend(u) == get_backend(v.y)
@@ -193,7 +196,7 @@ end
 
 """
     WENO_step!(u::T_field,
-               v::NamedTuple{names, <:Tuple{Vararg{AbstractField{<:Real}, 2}}},
+               v::Velocity3D,
                weno::FiniteDiffWENO5.WENOScheme,
                Δt, Δx, Δy, Δz,
                grid::StructuredGrid, arch;
@@ -203,7 +206,7 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 
 # Arguments
 - `u::T_field`: Current solution field to be updated in place.
-- `v::NamedTuple{names, <:Tuple{Vararg{AbstractField{<:Real}, 2}}}`: Velocity field (can be staggered or not based on `weno.stag`).
+- `v::Velocity3D`: Velocity field (can be staggered or not based on `weno.stag`).
 - `weno::WENOScheme`: WENO scheme structure containing necessary parameters and fields.
 - `Δt`: Time step size.
 - `Δx`: Spatial grid size.
@@ -214,7 +217,7 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
 - `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
-function WENO_step!(u::T_field, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractField{<:Real}, 3}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, Δz, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0) where {T_field <: AbstractArray{<:Real, 3}}
+function WENO_step!(u::T_field, v::Velocity3D, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, Δz, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0) where {T_field <: AbstractArray{<:Real, 3}}
 
     @assert get_backend(u) == get_backend(v.x)
     @assert get_backend(u) == get_backend(v.y)
@@ -262,43 +265,8 @@ function WENO_step!(u::T_field, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstr
 end
 
 
-# ── Multi-field overloads ──────────────────────────────────────────────
-
-"""
-    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, grid, arch; u_min, u_max)
-
-Advance multiple 1D Chmy fields sharing the same velocity and WENOScheme buffers.
-"""
-function WENO_step!(u::Tuple{Vararg{<:AbstractField{<:Real, 1}}}, v::NamedTuple{(:x,), <:Tuple{<:AbstractField{<:Real, 1}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, grid::StructuredGrid, arch; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
-    for i in eachindex(u)
-        WENO_step!(u[i], v, weno, Δt, Δx, grid, arch; u_min = u_min[i], u_max = u_max[i])
-    end
-    return nothing
-end
-
-"""
-    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, Δy, grid, arch; u_min, u_max)
-
-Advance multiple 2D Chmy fields sharing the same velocity and WENOScheme buffers.
-"""
-function WENO_step!(u::Tuple{Vararg{<:AbstractField{<:Real, 2}}}, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractField{<:Real}, 2}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, grid::StructuredGrid, arch; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
-    for i in eachindex(u)
-        WENO_step!(u[i], v, weno, Δt, Δx, Δy, grid, arch; u_min = u_min[i], u_max = u_max[i])
-    end
-    return nothing
-end
-
-"""
-    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, Δy, Δz, grid, arch; u_min, u_max)
-
-Advance multiple 3D Chmy fields sharing the same velocity and WENOScheme buffers.
-"""
-function WENO_step!(u::Tuple{Vararg{<:AbstractArray{<:Real, 3}}}, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractField{<:Real}, 3}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, Δz, grid::StructuredGrid, arch; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
-    for i in eachindex(u)
-        WENO_step!(u[i], v, weno, Δt, Δx, Δy, Δz, grid, arch; u_min = u_min[i], u_max = u_max[i])
-    end
-    return nothing
-end
-
+# Multi-field advection (u = (c1, c2, ...) sharing v and WENOScheme buffers) is
+# handled generically for every dimension and backend by the `WENO_step!(u::Tuple, ...)`
+# method in FiniteDiffWENO5's src/utils.jl.
 
 end

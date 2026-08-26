@@ -60,13 +60,13 @@ end
 
 
 """
-    upwind_update!(u, v, weno, nx, Δx_, Δt; stag=false)
+    upwind_update_1D!(u, v, weno, nx, Δx_, Δt)
 
 Perform a single explicit upwind advection update on field `u`
 using velocity field `v` on a staggered or collocated grid.
 
-- If `stag = true`, velocity is assumed to be defined at cell faces.
-- If `stag = false`, velocity is defined at cell centers.
+- If `weno.stag = true`, velocity is assumed to be defined at cell faces.
+- If `weno.stag = false`, velocity is defined at cell centers.
 - Uses the boundary conditions stored in `weno.boundary`.
 """
 function upwind_update_1D!(u, v, weno, nx, Δx_, Δt)

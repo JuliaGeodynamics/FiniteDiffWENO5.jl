@@ -1,6 +1,6 @@
 """
     WENO_step!(u::T,
-               v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}},
+               v::NamedTuple{(:x,), <:Tuple{<:AbstractVector{<:Real}}},
                weno::WENOScheme,
                Δt, Δx;
                u_min = 0.0, u_max = 0.0) where T <: AbstractVector{<:Real}
@@ -9,7 +9,7 @@ Advance the solution `u` by one time step using the 3rd-order SSP Runge-Kutta me
 
 # Arguments
 - `u::T`: Current solution array to be updated in place.
-- `v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}}`: Velocity array (can be staggered or not based on `weno.stag`).
+- `v::NamedTuple{(:x,), <:Tuple{<:AbstractVector{<:Real}}}`: Velocity array (can be staggered or not based on `weno.stag`).
 - `weno::WENOScheme`: WENO scheme structure containing necessary parameters and temporary arrays.
 - `Δt`: Time step size.
 - `Δx`: Spatial grid size.
@@ -19,7 +19,7 @@ Advance the solution `u` by one time step using the 3rd-order SSP Runge-Kutta me
 Citation: Borges et al. 2008: "An improved weighted essentially non-oscillatory scheme for hyperbolic conservation laws"
           doi:10.1016/j.jcp.2007.11.038
 """
-function WENO_step!(u::T, v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}}, weno::WENOScheme, Δt, Δx; u_min = 0.0, u_max = 0.0) where {T <: Vector{<:Real}}
+function WENO_step!(u::T, v::NamedTuple{(:x,), <:Tuple{<:AbstractVector{<:Real}}}, weno::WENOScheme, Δt, Δx; u_min = 0.0, u_max = 0.0) where {T <: AbstractVector{<:Real}}
 
     nx = size(u, 1)
     Δx_ = inv(Δx)
@@ -56,20 +56,6 @@ function WENO_step!(u::T, v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}}, weno:
     return nothing
 end
 
-"""
-    WENO_step!(u::Tuple{Vararg{Vector{<:Real}}},
-               v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}},
-               weno::WENOScheme,
-               Δt, Δx;
-               u_min::Tuple{Vararg{Real}},
-               u_max::Tuple{Vararg{Real}})
-
-Advance multiple fields `u = (c1, c2, ...)` by one time step, all sharing the same velocity `v` and `WENOScheme` buffers.
-Each field is advected sequentially with its own `u_min` / `u_max` bounds for the Zhang-Shu limiter.
-"""
-function WENO_step!(u::Tuple{Vararg{Vector{<:Real}}}, v::NamedTuple{(:x,), <:Tuple{<:Vector{<:Real}}}, weno::WENOScheme, Δt, Δx; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
-    for i in eachindex(u)
-        WENO_step!(u[i], v, weno, Δt, Δx; u_min = u_min[i], u_max = u_max[i])
-    end
-    return nothing
-end
+# Multi-field advection (u = (c1, c2, ...) sharing v and WENOScheme buffers) is
+# handled generically for every dimension and backend by the `WENO_step!(u::Tuple, ...)`
+# method in src/utils.jl.

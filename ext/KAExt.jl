@@ -1,6 +1,6 @@
 module KAExt
 using FiniteDiffWENO5
-using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind
+using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind, validate_boundary, flux_size, left_index, right_index
 using MuladdMacro
 using KernelAbstractions
 
@@ -30,34 +30,27 @@ Create a WENO scheme structure for the given field `c` using the specified `back
 # Arguments
 - `c0::AbstractArray{T, N}`: The input field for which the WENO scheme is to be created. Only used to get the type and size.
 - `backend::Backend`: The KernelAbstractions backend to be used (e.g., CPU(), CUDA(), etc.).
-- `boundary::NTuple{2N, Int}`: A tuple specifying the boundary conditions for each dimension (0: homogeneous Neumann, 1: homogeneous Dirichlet, 2: periodic). Default is periodic (2).
+- `boundary::NTuple{2N, Int}`: A tuple specifying the boundary conditions for each dimension (0: homogeneous Dirichlet, 1: homogeneous Neumann, 2: periodic). Default is periodic (2).
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers).
 """
 function WENOScheme(c0::AbstractArray{T, N}, backend::Backend; boundary::NTuple = (2, 2), stag::Bool = true, lim_ZS::Bool = false, upwind_mode::Bool = false) where {T, N}
 
     @assert get_backend(c0) == backend "The type of the input field must match the specified backend."
 
-    # check that boundary conditions are correctly defined
-    @assert length(boundary) == 2N "Boundary conditions must be a tuple of length $(2N) for $(N)D data."
-    # check that boundary conditions are either 0 (homogeneous Neumann) or 1 (homogeneous Dirichlet) or 2 (periodic)
-    @assert all(b in (0, 1, 2) for b in boundary) "Boundary conditions must be either 0 (homogeneous Neumann), 1 (homogeneous Dirichlet) or 2 (periodic)."
+    validate_boundary(boundary, N)
 
     # multithreading is always on in this case
     multithreading = true
 
     backend = get_backend(c0)
 
-    N_boundary = 2 * N
-
-    # helper to expand size in a given dimension
-    @inline function flux_size(d)
-        return ntuple(i -> size(c0, i) + (i == d ? 1 : 0), min(N, 3))
-    end
+    N_boundary = length(boundary)
 
     # construct NamedTuples for left and right fluxes
     labels = (:x, :y, :z)[1:min(N, 3)]
-    fl = NamedTuple{labels}(ntuple(d -> KernelAbstractions.zeros(backend, T, flux_size(d)), min(N, 3)))
-    fr = NamedTuple{labels}(ntuple(d -> KernelAbstractions.zeros(backend, T, flux_size(d)), min(N, 3)))
+    sizes = size(c0)
+    fl = NamedTuple{labels}(ntuple(d -> KernelAbstractions.zeros(backend, T, flux_size(sizes, d, N)), min(N, 3)))
+    fr = NamedTuple{labels}(ntuple(d -> KernelAbstractions.zeros(backend, T, flux_size(sizes, d, N)), min(N, 3)))
 
     du = KernelAbstractions.zeros(backend, T, size(c0))
     ut = KernelAbstractions.zeros(backend, T, size(c0))
@@ -292,43 +285,8 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstract
 end
 
 
-# ── Multi-field overloads ──────────────────────────────────────────────
-
-"""
-    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, backend; u_min, u_max)
-
-Advance multiple 1D fields sharing the same velocity and WENOScheme buffers.
-"""
-function WENO_step!(u::Tuple{Vararg{<:AbstractVector{<:Real}}}, v::NamedTuple{(:x,), <:Tuple{<:AbstractArray{<:Real}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, backend::Backend; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
-    for i in eachindex(u)
-        WENO_step!(u[i], v, weno, Δt, Δx, backend; u_min = u_min[i], u_max = u_max[i])
-    end
-    return nothing
-end
-
-"""
-    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, Δy, backend; u_min, u_max)
-
-Advance multiple 2D fields sharing the same velocity and WENOScheme buffers.
-"""
-function WENO_step!(u::Tuple{Vararg{<:AbstractArray{<:Real, 2}}}, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<:Real}, 2}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, backend::Backend; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
-    for i in eachindex(u)
-        WENO_step!(u[i], v, weno, Δt, Δx, Δy, backend; u_min = u_min[i], u_max = u_max[i])
-    end
-    return nothing
-end
-
-"""
-    WENO_step!(u::NTuple{NF}, v, weno, Δt, Δx, Δy, Δz, backend; u_min, u_max)
-
-Advance multiple 3D fields sharing the same velocity and WENOScheme buffers.
-"""
-function WENO_step!(u::Tuple{Vararg{<:AbstractArray{<:Real, 3}}}, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractArray{<:Real}, 3}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, Δz, backend::Backend; u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}})
-    for i in eachindex(u)
-        WENO_step!(u[i], v, weno, Δt, Δx, Δy, Δz, backend; u_min = u_min[i], u_max = u_max[i])
-    end
-    return nothing
-end
-
+# Multi-field advection (u = (c1, c2, ...) sharing v and WENOScheme buffers) is
+# handled generically for every dimension and backend by the `WENO_step!(u::Tuple, ...)`
+# method in FiniteDiffWENO5's src/utils.jl.
 
 end

@@ -7,35 +7,12 @@
 
     if 1 <= i <= n && 1 <= j <= m && 1 <= k <= p
 
-        # Left boundary condition
-        if boundary[1] == 0       # homogeneous Dirichlet
-            iwww = clamp(i - 3, 1, nx)
-            iww = clamp(i - 2, 1, nx)
-            iw = clamp(i - 1, 1, nx)
-        elseif boundary[1] == 1   # homogeneous Neumann
-            iwww = max(i - 3, 1)
-            iww = max(i - 2, 1)
-            iw = max(i - 1, 1)
-        elseif boundary[1] == 2   # Periodic
-            iwww = mod1(i - 3, nx)
-            iww = mod1(i - 2, nx)
-            iw = mod1(i - 1, nx)
-        end
-
-        # Right boundary condition
-        if boundary[2] == 0
-            ie = clamp(i, 1, nx)
-            iee = clamp(i + 1, 1, nx)
-            ieee = clamp(i + 2, 1, nx)
-        elseif boundary[2] == 1
-            ie = min(i, nx)
-            iee = min(i + 1, nx)
-            ieee = min(i + 2, nx)
-        elseif boundary[2] == 2
-            ie = mod1(i, nx)
-            iee = mod1(i + 1, nx)
-            ieee = mod1(i + 2, nx)
-        end
+        iwww = left_index(i, 3, nx, boundary[1])
+        iww = left_index(i, 2, nx, boundary[1])
+        iw = left_index(i, 1, nx, boundary[1])
+        ie = right_index(i, 0, nx, boundary[2])
+        iee = right_index(i, 1, nx, boundary[2])
+        ieee = right_index(i, 2, nx, boundary[2])
 
         u1 = u[iwww, j, k]
         u2 = u[iww, j, k]
@@ -50,8 +27,8 @@
         if lim_ZS
             ϵθ = 1.0e-16 # small number to avoid division by zero
 
-            fl[I...] = zhang_shu_limit(fl[I...], u3, u_min, u_max, ϵθ)
-            fr[I...] = zhang_shu_limit(fr[I...], u4, u_min, u_max, ϵθ)
+            fl[i, j, k] = zhang_shu_limit(fl[i, j, k], u3, u_min, u_max, ϵθ)
+            fr[i, j, k] = zhang_shu_limit(fr[i, j, k], u4, u_min, u_max, ϵθ)
         end
     end
 end
@@ -65,35 +42,12 @@ end
 
     if 1 <= i <= n && 1 <= j <= m && 1 <= k <= p
 
-        # Left boundary condition
-        if boundary[3] == 0       # homogeneous Dirichlet
-            jwww = clamp(j - 3, 1, ny)
-            jww = clamp(j - 2, 1, ny)
-            jw = clamp(j - 1, 1, ny)
-        elseif boundary[3] == 1   # homogeneous Neumann
-            jwww = max(j - 3, 1)
-            jww = max(j - 2, 1)
-            jw = max(j - 1, 1)
-        elseif boundary[3] == 2   # Periodic
-            jwww = mod1(j - 3, ny)
-            jww = mod1(j - 2, ny)
-            jw = mod1(j - 1, ny)
-        end
-
-        # Right boundary condition
-        if boundary[4] == 0
-            je = clamp(j, 1, ny)
-            jee = clamp(j + 1, 1, ny)
-            jeee = clamp(j + 2, 1, ny)
-        elseif boundary[4] == 1
-            je = min(j, ny)
-            jee = min(j + 1, ny)
-            jeee = min(j + 2, ny)
-        elseif boundary[4] == 2
-            je = mod1(j, ny)
-            jee = mod1(j + 1, ny)
-            jeee = mod1(j + 2, ny)
-        end
+        jwww = left_index(j, 3, ny, boundary[3])
+        jww = left_index(j, 2, ny, boundary[3])
+        jw = left_index(j, 1, ny, boundary[3])
+        je = right_index(j, 0, ny, boundary[4])
+        jee = right_index(j, 1, ny, boundary[4])
+        jeee = right_index(j, 2, ny, boundary[4])
 
         u1 = u[i, jwww, k]
         u2 = u[i, jww, k]
@@ -108,8 +62,8 @@ end
         if lim_ZS
             ϵθ = 1.0e-16 # small number to avoid division by zero
 
-            fl[I...] = zhang_shu_limit(fl[I...], u3, u_min, u_max, ϵθ)
-            fr[I...] = zhang_shu_limit(fr[I...], u4, u_min, u_max, ϵθ)
+            fl[i, j, k] = zhang_shu_limit(fl[i, j, k], u3, u_min, u_max, ϵθ)
+            fr[i, j, k] = zhang_shu_limit(fr[i, j, k], u4, u_min, u_max, ϵθ)
         end
     end
 end
@@ -123,35 +77,12 @@ end
 
     if 1 <= i <= n && 1 <= j <= m && 1 <= k <= p
 
-        # Left boundary condition
-        if boundary[5] == 0       # homogeneous Dirichlet
-            kwww = clamp(k - 3, 1, nz)
-            kww = clamp(k - 2, 1, nz)
-            kw = clamp(k - 1, 1, nz)
-        elseif boundary[5] == 1   # homogeneous Neumann
-            kwww = max(k - 3, 1)
-            kww = max(k - 2, 1)
-            kw = max(k - 1, 1)
-        elseif boundary[5] == 2   # Periodic
-            kwww = mod1(k - 3, nz)
-            kww = mod1(k - 2, nz)
-            kw = mod1(k - 1, nz)
-        end
-
-        # Right boundary condition
-        if boundary[6] == 0
-            ke = clamp(k, 1, nz)
-            kee = clamp(k + 1, 1, nz)
-            keee = clamp(k + 2, 1, nz)
-        elseif boundary[6] == 1
-            ke = min(k, nz)
-            kee = min(k + 1, nz)
-            keee = min(k + 2, nz)
-        elseif boundary[6] == 2
-            ke = mod1(k, nz)
-            kee = mod1(k + 1, nz)
-            keee = mod1(k + 2, nz)
-        end
+        kwww = left_index(k, 3, nz, boundary[5])
+        kww = left_index(k, 2, nz, boundary[5])
+        kw = left_index(k, 1, nz, boundary[5])
+        ke = right_index(k, 0, nz, boundary[6])
+        kee = right_index(k, 1, nz, boundary[6])
+        keee = right_index(k, 2, nz, boundary[6])
 
         u1 = u[i, j, kwww]
         u2 = u[i, j, kww]
@@ -166,8 +97,8 @@ end
         if lim_ZS
             ϵθ = 1.0e-16 # small number to avoid division by zero
 
-            fl[I...] = zhang_shu_limit(fl[I...], u3, u_min, u_max, ϵθ)
-            fr[I...] = zhang_shu_limit(fr[I...], u4, u_min, u_max, ϵθ)
+            fl[i, j, k] = zhang_shu_limit(fl[i, j, k], u3, u_min, u_max, ϵθ)
+            fr[i, j, k] = zhang_shu_limit(fr[i, j, k], u4, u_min, u_max, ϵθ)
         end
     end
 end
@@ -212,56 +143,12 @@ end
 
     i, j, k = I[1], I[2], I[3]
 
-    # ---- X-direction boundaries ----
-    if boundary[1] == 0       # Dirichlet left
-        iLx = clamp(i - 1, 1, nx)
-    elseif boundary[1] == 1   # Neumann left
-        iLx = max(i - 1, 1)
-    elseif boundary[1] == 2   # Periodic left
-        iLx = mod1(i - 1, nx)
-    end
-
-    if boundary[2] == 0       # Dirichlet right
-        iRx = clamp(i + 1, 1, nx)
-    elseif boundary[2] == 1   # Neumann right
-        iRx = min(i + 1, nx)
-    elseif boundary[2] == 2   # Periodic right
-        iRx = mod1(i + 1, nx)
-    end
-
-    # ---- Y-direction boundaries ----
-    if boundary[3] == 0       # Dirichlet bottom
-        jLy = clamp(j - 1, 1, ny)
-    elseif boundary[3] == 1   # Neumann bottom
-        jLy = max(j - 1, 1)
-    elseif boundary[3] == 2   # Periodic bottom
-        jLy = mod1(j - 1, ny)
-    end
-
-    if boundary[4] == 0       # Dirichlet top
-        jRy = clamp(j + 1, 1, ny)
-    elseif boundary[4] == 1   # Neumann top
-        jRy = min(j + 1, ny)
-    elseif boundary[4] == 2   # Periodic top
-        jRy = mod1(j + 1, ny)
-    end
-
-    # ---- Z-direction boundaries ----
-    if boundary[5] == 0       # Dirichlet front
-        kLz = clamp(k - 1, 1, nz)
-    elseif boundary[5] == 1   # Neumann front
-        kLz = max(k - 1, 1)
-    elseif boundary[5] == 2   # Periodic front
-        kLz = mod1(k - 1, nz)
-    end
-
-    if boundary[6] == 0       # Dirichlet back
-        kRz = clamp(k + 1, 1, nz)
-    elseif boundary[6] == 1   # Neumann back
-        kRz = min(k + 1, nz)
-    elseif boundary[6] == 2   # Periodic back
-        kRz = mod1(k + 1, nz)
-    end
+    iLx = left_index(i, 1, nx, boundary[1])
+    iRx = right_index(i, 1, nx, boundary[2])
+    jLy = left_index(j, 1, ny, boundary[3])
+    jRy = right_index(j, 1, ny, boundary[4])
+    kLz = left_index(k, 1, nz, boundary[5])
+    kRz = right_index(k, 1, nz, boundary[6])
 
     # ---- Upwind update ----
     if stag
