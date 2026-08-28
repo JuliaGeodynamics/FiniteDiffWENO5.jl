@@ -21,7 +21,9 @@ function main(; nx = 400, ny = 400)
     vy0 = ones(nx, ny)
     v = (; x = vy0, y = vx0)
 
-    # Three chemical components with different initial conditions
+    # Three independent fields with different initial conditions.  They are not
+    # normalised and therefore do not form a multiphase composition; use the
+    # multiphase examples when component fractions must sum to one.
     x0 = 1 / 4
     c_width1 = 0.08
     c_width2 = 0.06

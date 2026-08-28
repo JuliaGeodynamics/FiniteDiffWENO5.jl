@@ -1,10 +1,10 @@
 module KAExt
 using FiniteDiffWENO5
-using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind, validate_boundary, flux_size, left_index, right_index, inflow_value
+using FiniteDiffWENO5: zhang_shu_limit, limit_simplex, weno5_reconstruction_upwind, weno5_reconstruction_downwind, multiphase_reconstruction_upwind, multiphase_reconstruction_downwind, validate_boundary, validate_multiphase_boundary, normalize_boundary_faces, flux_size, left_index, right_index, inflow_value, multiphase_inflow_value
 using MuladdMacro
 using KernelAbstractions
 
-import FiniteDiffWENO5: WENOScheme, WENO_step!
+import FiniteDiffWENO5: WENOScheme, MultiphaseWENOScheme, WENO_step!
 
 # stolen from Chmy.jl to reproduce the behaviour with KA.jl
 struct Offset{O} end
@@ -64,9 +64,78 @@ function WENOScheme(c0::AbstractArray{T, N}, backend::Backend; boundary = nothin
     return WENOScheme{T, TArray, TFlux, typeof(boundary)}(stag = stag, boundary = boundary, multithreading = multithreading, lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut, upwind_mode = upwind_mode)
 end
 
+function validate_multiphase_backend_boundary(boundary, backend, N, sizes, NP, ::Type{T}) where {T}
+    faces = normalize_boundary_faces(boundary, N)
+    host_faces = map(faces) do bc
+        if bc isa PrescribedInflowBC && bc.value isa Tuple
+            host_value = map(bc.value) do component
+                if component isa AbstractArray
+                    @assert get_backend(component) == backend "inflow profiles must use the specified backend"
+                    Array(component)
+                else
+                    component
+                end
+            end
+            PrescribedInflowBC(host_value)
+        else
+            bc
+        end
+    end
+    validate_multiphase_boundary(host_faces, N, sizes, NP, T)
+    return faces
+end
+
+function MultiphaseWENOScheme(
+        phases::Tuple{A, Vararg{A, M}}, backend::Backend;
+        boundary = nothing, stag::Bool = false, multithreading::Bool = true,
+    ) where {T, N, A <: AbstractArray{T, N}, M}
+    NP = M + 1
+    NP >= 2 || throw(ArgumentError(
+        "MultiphaseWENOScheme requires at least two phases, got $NP. " *
+            "Use WENOScheme for a single field."))
+    1 <= N <= 3 || throw(ArgumentError(
+        "MultiphaseWENOScheme supports 1D, 2D, and 3D fields, got $(N)D"))
+
+    reference_axes = axes(first(phases))
+    for k in 1:NP
+        axes(phases[k]) == reference_axes || throw(DimensionMismatch(
+            "all phases must share axes, phase 1 has $reference_axes but phase $k has " *
+                "$(axes(phases[k]))"))
+        @assert get_backend(phases[k]) == backend "phase $k must use the specified backend"
+    end
+
+    boundary === nothing && (boundary = ntuple(_ -> ExtrapolateBC(), 2N))
+    boundary = validate_multiphase_backend_boundary(
+        boundary, backend, N, size(first(phases)), NP, T)
+
+    labels = (:x, :y, :z)[1:min(N, 3)]
+    sizes = size(first(phases))
+    valNP = Val(NP)
+    backend_zeros(dims) = KernelAbstractions.zeros(backend, T, dims...)
+    fl = NamedTuple{labels}(ntuple(min(N, 3)) do d
+        ntuple(_ -> backend_zeros(flux_size(sizes, d, N)), valNP)
+    end)
+    fr = NamedTuple{labels}(ntuple(min(N, 3)) do d
+        ntuple(_ -> backend_zeros(flux_size(sizes, d, N)), valNP)
+    end)
+    du = ntuple(_ -> backend_zeros(sizes), valNP)
+    ut = ntuple(_ -> backend_zeros(sizes), valNP)
+    divv = stag ? backend_zeros(sizes) : nothing
+
+    return MultiphaseWENOScheme{
+        T, NP, typeof(du), typeof(fl), typeof(divv), typeof(boundary),
+    }(
+        stag = stag, boundary = boundary, multithreading = multithreading,
+        fl = fl, fr = fr, du = du, ut = ut, divv = divv,
+    )
+end
+
 include("KAExt1D.jl")
 include("KAExt2D.jl")
 include("KAExt3D.jl")
+include("KAMultiphase1D.jl")
+include("KAMultiphase2D.jl")
+include("KAMultiphase3D.jl")
 
 """
     WENO_step!(u::T_KA,

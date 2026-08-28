@@ -1,7 +1,7 @@
 
 ## Getting Started
 
-There are currently two exported functions in FiniteDiffWENO5.jl: `WENOScheme()` and `WENO_step!()`. The user must define the grid and the initial conditions themselves.
+The main API consists of `WENOScheme`, `MultiphaseWENOScheme`, and `WENO_step!`. The user must define the grid and the initial conditions themselves.
 
 `WENOScheme()` is used to create a WENO scheme structure containing all the necessary information for the WENO method, while `WENO_step!()` performs one step of the time integration using the WENO-Z method and a 3rd-order Runge-Kutta method. Refer to the docstrings to see the available options for each function.
 
@@ -160,4 +160,31 @@ WENO_step!((c1, c2, c3), v, weno, Δt, Δx, Δy, backend;
 # Chmy
 WENO_step!((c1, c2, c3), v, weno, Δt, Δx, Δy, grid, arch;
     u_min = (0.0, 0.0, 0.0), u_max = (1.0, 1.0, 1.0))
+```
+
+## Material fractions
+
+The tuple call with a `WENOScheme` reconstructs each field independently. It is useful
+for unrelated tracers, but it does not preserve a pointwise sum. Use
+`MultiphaseWENOScheme` when the fields are fractions of one material composition:
+
+```julia
+phases = (ϕ1, ϕ2, 1 .- ϕ1 .- ϕ2)
+boundary = ntuple(_ -> PeriodicBC(), 4)
+scheme = MultiphaseWENOScheme(phases; boundary = boundary, stag = true)
+WENO_step!(phases, velocity, scheme, Δt, Δx, Δy)
+```
+
+Every input cell must initially satisfy `0 ≤ ϕₖ ≤ 1` and `Σₖϕₖ = 1`. The
+operator does not repair invalid input or renormalise after a step. Bound preservation
+requires a stable explicit CFL, as for the scalar SSP-RK3 operator. Interfaces remain
+diffuse and are transported as continuous fractions.
+
+A prescribed inflow supplies the complete composition:
+
+```julia
+west = PrescribedInflowBC((0.2, 0.3, 0.5))
+boundary = AdvectionBC(
+    west = west, east = ExtrapolateBC(),
+    bot = PeriodicBC(), top = PeriodicBC())
 ```

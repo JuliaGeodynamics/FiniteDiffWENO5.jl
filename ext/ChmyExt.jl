@@ -1,17 +1,48 @@
 module ChmyExt
 using FiniteDiffWENO5
-using FiniteDiffWENO5: zhang_shu_limit, weno5_reconstruction_upwind, weno5_reconstruction_downwind, validate_boundary, left_index, right_index, inflow_value
+using FiniteDiffWENO5: zhang_shu_limit, limit_simplex, weno5_reconstruction_upwind, weno5_reconstruction_downwind, multiphase_reconstruction_upwind, multiphase_reconstruction_downwind, validate_boundary, validate_multiphase_boundary, normalize_boundary_faces, left_index, right_index, inflow_value, multiphase_inflow_value
 using MuladdMacro
 using Chmy
 using KernelAbstractions
 
-import FiniteDiffWENO5: WENOScheme, WENO_step!
+import FiniteDiffWENO5: WENOScheme, MultiphaseWENOScheme, WENO_step!
 
 # Velocity can be passed either as a plain NamedTuple of fields or as a Chmy `VectorField`
 # (which behaves like a NamedTuple via `getproperty` but isn't one).
 const Velocity1D = Union{NamedTuple{(:x,), <:Tuple{<:AbstractField{<:Real, 1}}}, VectorField{1, <:Tuple{<:AbstractField{<:Real, 1}}}}
 const Velocity2D = Union{NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractField{<:Real}, 2}}}, VectorField{2, <:Tuple{Vararg{AbstractField{<:Real}, 2}}}}
 const Velocity3D = Union{NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractField{<:Real}, 3}}}, VectorField{3, <:Tuple{Vararg{AbstractField{<:Real}, 3}}}}
+
+function adapt_multiphase_profile(component::AbstractArray, backend)
+    get_backend(component) == backend && return component
+    adapted = KernelAbstractions.zeros(backend, eltype(component), size(component)...)
+    copyto!(adapted, component)
+    synchronize(backend)
+    return adapted
+end
+
+adapt_multiphase_profile(component, backend) = component
+
+function validate_multiphase_chmy_boundary(boundary, backend, N, sizes, NP, ::Type{T}) where {T}
+    faces = normalize_boundary_faces(boundary, N)
+    backend_faces = map(faces) do bc
+        if bc isa PrescribedInflowBC && bc.value isa Tuple
+            PrescribedInflowBC(map(component -> adapt_multiphase_profile(component, backend), bc.value))
+        else
+            bc
+        end
+    end
+    host_faces = map(backend_faces) do bc
+        if bc isa PrescribedInflowBC && bc.value isa Tuple
+            PrescribedInflowBC(map(component -> component isa AbstractArray ? Array(component) : component,
+                bc.value))
+        else
+            bc
+        end
+    end
+    validate_multiphase_boundary(host_faces, N, sizes, NP, T)
+    return backend_faces
+end
 
 
 """
@@ -53,6 +84,50 @@ function WENOScheme(c0::AbstractField{T, N}, grid::StructuredGrid; boundary = no
     return WENOScheme{T, TArray, TFlux, typeof(boundary)}(stag = stag, boundary = boundary, multithreading = multithreading, lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut, upwind_mode = upwind_mode)
 end
 
+function MultiphaseWENOScheme(
+        phases::Tuple{A, Vararg{A, M}}, grid::StructuredGrid{N};
+        boundary = nothing, stag::Bool = false, multithreading::Bool = true,
+    ) where {T, N, A <: AbstractField{T, N}, M}
+    NP = M + 1
+    NP >= 2 || throw(ArgumentError(
+        "MultiphaseWENOScheme requires at least two phases, got $NP. " *
+            "Use WENOScheme for a single field."))
+    1 <= N <= 3 || throw(ArgumentError(
+        "MultiphaseWENOScheme supports 1D, 2D, and 3D fields, got $(N)D"))
+    sizes = ntuple(d -> grid.axes[d].length, Val(N))
+    backend = get_backend(first(phases))
+    for q in 1:NP
+        size(phases[q]) == sizes || throw(DimensionMismatch(
+            "phase $q has size $(size(phases[q])) but the grid center has size $sizes"))
+        @assert get_backend(phases[q]) == backend
+        all(loc -> loc isa Center, location(phases[q])) || throw(ArgumentError(
+            "multiphase fields must be cell-centred, phase $q is at $(location(phases[q]))"))
+    end
+
+    boundary === nothing && (boundary = ntuple(_ -> ExtrapolateBC(), 2N))
+    boundary = validate_multiphase_chmy_boundary(boundary, backend, N, sizes, NP, T)
+    labels = (:x, :y, :z)[1:N]
+    phase_count = Val(NP)
+    direction_count = Val(N)
+    direction_location(d) = ntuple(i -> i == d ? Vertex() : Center(), direction_count)
+    fl = NamedTuple{labels}(ntuple(direction_count) do d
+        ntuple(_ -> Field(backend, grid, direction_location(d), T), phase_count)
+    end)
+    fr = NamedTuple{labels}(ntuple(direction_count) do d
+        ntuple(_ -> Field(backend, grid, direction_location(d), T), phase_count)
+    end)
+    du = ntuple(_ -> Field(backend, grid, Center(), T), phase_count)
+    ut = ntuple(_ -> Field(backend, grid, Center(), T), phase_count)
+    divv = stag ? Field(backend, grid, Center(), T) : nothing
+
+    return MultiphaseWENOScheme{
+        T, NP, typeof(du), typeof(fl), typeof(divv), typeof(boundary),
+    }(
+        stag = stag, boundary = boundary, multithreading = multithreading,
+        fl = fl, fr = fr, du = du, ut = ut, divv = divv,
+    )
+end
+
 function WENOScheme(c0::AbstractField; kwargs...)
     error(
         """
@@ -75,6 +150,153 @@ end
 include("KAExt1D.jl")
 include("KAExt2D.jl")
 include("KAExt3D.jl")
+include("KAMultiphase1D.jl")
+include("KAMultiphase2D.jl")
+include("KAMultiphase3D.jl")
+
+function launch_multiphase_update_chmy!(
+        dest, initial, stage, du, a, b, c, Δt, phase_count, grid, backend,
+    )
+    kernel = multiphase_RK_update_KA!(backend)
+    offset = Offset(ntuple(_ -> 0, Val(ndims(grid))))
+    dest_interior = map(interior, dest)
+    initial_interior = map(interior, initial)
+    stage_interior = map(interior, stage)
+    du_interior = map(interior, du)
+    kernel(dest_interior, initial_interior, stage_interior, du_interior,
+        a, b, c, Δt, phase_count, grid, offset; ndrange = size(first(dest_interior)))
+    synchronize(backend)
+    return nothing
+end
+
+function WENO_step!(
+        phases::Tuple{A, Vararg{A, M}}, v::Velocity1D,
+        scheme::MultiphaseWENOScheme{T, NP}, Δt, Δx,
+        grid::StructuredGrid{1}, arch,
+    ) where {M, A <: AbstractField{<:Real, 1}, T, NP}
+    M + 1 == NP || throw(DimensionMismatch(
+        "scheme was built for $NP phases but $(M + 1) were given"))
+    backend = get_backend(first(phases))
+    for q in 1:NP
+        @assert get_backend(phases[q]) == backend
+    end
+    @assert get_backend(v.x) == backend
+
+    launch = Launcher(arch, grid)
+    (; fl, fr, ut, du, divv, boundary, stag, χ, γ, ζ, ϵ) = scheme
+    nx = grid.axes[1].length
+    Δx_ = inv(Δx)
+    phase_count = Val(NP)
+
+    function launch_stage!(dest, stage, a, b, c)
+        launch(arch, grid, multiphase_WENO_flux_KA_1D! =>
+            (fl.x, fr.x, stage, boundary, nx, χ, γ, ζ, ϵ, phase_count, grid))
+        if stag
+            launch(arch, grid, multiphase_semi_staggered_KA_1D! =>
+                (du, stage, fl, fr, v, divv, Δx_, phase_count, grid))
+        else
+            launch(arch, grid, multiphase_semi_collocated_KA_1D! =>
+                (du, fl, fr, v, Δx_, phase_count, grid))
+        end
+        launch_multiphase_update_chmy!(
+            dest, phases, stage, du, a, b, c, Δt, phase_count, grid, backend)
+        return nothing
+    end
+
+    launch_stage!(ut, phases, 1.0, 0.0, 1.0)
+    launch_stage!(ut, ut, 0.75, 0.25, 0.25)
+    launch_stage!(phases, ut, 1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0)
+    return nothing
+end
+
+function WENO_step!(
+        phases::Tuple{A, Vararg{A, M}}, v::Velocity2D,
+        scheme::MultiphaseWENOScheme{T, NP}, Δt, Δx, Δy,
+        grid::StructuredGrid{2}, arch,
+    ) where {M, A <: AbstractField{<:Real, 2}, T, NP}
+    M + 1 == NP || throw(DimensionMismatch(
+        "scheme was built for $NP phases but $(M + 1) were given"))
+    backend = get_backend(first(phases))
+    for q in 1:NP
+        @assert get_backend(phases[q]) == backend
+    end
+    @assert get_backend(v.x) == backend
+    @assert get_backend(v.y) == backend
+
+    launch = Launcher(arch, grid)
+    (; fl, fr, ut, du, divv, boundary, stag, χ, γ, ζ, ϵ) = scheme
+    nx, ny = map(axis -> axis.length, grid.axes)
+    Δx_, Δy_ = inv(Δx), inv(Δy)
+    phase_count = Val(NP)
+
+    function launch_stage!(dest, stage, a, b, c)
+        launch(arch, grid, multiphase_WENO_flux_KA_2D_x! =>
+            (fl.x, fr.x, stage, boundary, nx, χ, γ, ζ, ϵ, phase_count, grid))
+        launch(arch, grid, multiphase_WENO_flux_KA_2D_y! =>
+            (fl.y, fr.y, stage, boundary, ny, χ, γ, ζ, ϵ, phase_count, grid))
+        if stag
+            launch(arch, grid, multiphase_semi_staggered_KA_2D! =>
+                (du, stage, fl, fr, v, divv, Δx_, Δy_, phase_count, grid))
+        else
+            launch(arch, grid, multiphase_semi_collocated_KA_2D! =>
+                (du, fl, fr, v, Δx_, Δy_, phase_count, grid))
+        end
+        launch_multiphase_update_chmy!(
+            dest, phases, stage, du, a, b, c, Δt, phase_count, grid, backend)
+        return nothing
+    end
+
+    launch_stage!(ut, phases, 1.0, 0.0, 1.0)
+    launch_stage!(ut, ut, 0.75, 0.25, 0.25)
+    launch_stage!(phases, ut, 1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0)
+    return nothing
+end
+
+function WENO_step!(
+        phases::Tuple{A, Vararg{A, M}}, v::Velocity3D,
+        scheme::MultiphaseWENOScheme{T, NP}, Δt, Δx, Δy, Δz,
+        grid::StructuredGrid{3}, arch,
+    ) where {M, A <: AbstractField{<:Real, 3}, T, NP}
+    M + 1 == NP || throw(DimensionMismatch(
+        "scheme was built for $NP phases but $(M + 1) were given"))
+    backend = get_backend(first(phases))
+    for q in 1:NP
+        @assert get_backend(phases[q]) == backend
+    end
+    @assert get_backend(v.x) == backend
+    @assert get_backend(v.y) == backend
+    @assert get_backend(v.z) == backend
+
+    launch = Launcher(arch, grid)
+    (; fl, fr, ut, du, divv, boundary, stag, χ, γ, ζ, ϵ) = scheme
+    nx, ny, nz = map(axis -> axis.length, grid.axes)
+    Δx_, Δy_, Δz_ = inv(Δx), inv(Δy), inv(Δz)
+    phase_count = Val(NP)
+
+    function launch_stage!(dest, stage, a, b, c)
+        launch(arch, grid, multiphase_WENO_flux_KA_3D_x! =>
+            (fl.x, fr.x, stage, boundary, nx, χ, γ, ζ, ϵ, phase_count, grid))
+        launch(arch, grid, multiphase_WENO_flux_KA_3D_y! =>
+            (fl.y, fr.y, stage, boundary, ny, χ, γ, ζ, ϵ, phase_count, grid))
+        launch(arch, grid, multiphase_WENO_flux_KA_3D_z! =>
+            (fl.z, fr.z, stage, boundary, nz, χ, γ, ζ, ϵ, phase_count, grid))
+        if stag
+            launch(arch, grid, multiphase_semi_staggered_KA_3D! =>
+                (du, stage, fl, fr, v, divv, Δx_, Δy_, Δz_, phase_count, grid))
+        else
+            launch(arch, grid, multiphase_semi_collocated_KA_3D! =>
+                (du, fl, fr, v, Δx_, Δy_, Δz_, phase_count, grid))
+        end
+        launch_multiphase_update_chmy!(
+            dest, phases, stage, du, a, b, c, Δt, phase_count, grid, backend)
+        return nothing
+    end
+
+    launch_stage!(ut, phases, 1.0, 0.0, 1.0)
+    launch_stage!(ut, ut, 0.75, 0.25, 0.25)
+    launch_stage!(phases, ut, 1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0)
+    return nothing
+end
 
 
 """

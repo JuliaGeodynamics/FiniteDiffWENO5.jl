@@ -18,3 +18,31 @@ In FiniteDiffWENO5.jl, two forms of advection operators are currently supported:
 In both formulations, only the scalar field $u$ is reconstructed at the cell interfaces using the WENO scheme.
 
 The package currently implements the WENO-Z reconstruction developed by [Borges et al. (2008)](https://doi.org/10.1016/j.jcp.2007.11.038). This variant introduces a modified computation of the nonlinear weights that improves accuracy near critical points—where the first derivative of the solution vanishes—while preserving the robust, non-oscillatory behavior of the classical WENO methods. Additional reconstruction variants may be included in future versions.
+
+## Simplex-constrained material fractions
+
+For material fractions, independent nonlinear weights generally break `Σₖϕₖ = 1`.
+`MultiphaseWENOScheme` instead averages the phase smoothness indicators and uses the
+resulting weights `ωᵣ` for every phase. Because each candidate reconstruction `sᵣ` is
+exact for constants,
+
+```math
+\sum_k \phi_{k,f} = \sum_r \omega_r \sum_k s_r(\phi_k)
+                    = \sum_r \omega_r s_r(1) = 1.
+```
+
+One common Zhang-Shu coefficient `θ` then limits the complete face vector toward its
+donor composition. This convex combination preserves both the sum and the interval
+`[0,1]`. Independent limiter coefficients would not preserve the sum.
+
+For staggered velocity, material fractions obey
+
+```math
+\partial_t\phi_k + \nabla\!\cdot(\mathbf{v}\phi_k)
+    = \phi_k\,\nabla\!\cdot\mathbf{v}.
+```
+
+The source uses the same two-point discrete divergence as the summed face fluxes, so
+the two terms cancel algebraically for `Σₖϕₖ`, up to floating-point roundoff. The
+collocated operator directly discretises the advective form and requires no divergence
+source.

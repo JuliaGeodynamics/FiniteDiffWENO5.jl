@@ -14,6 +14,28 @@ using FiniteDiffWENO5
 
 That way, the two functions `WENOScheme()` and `WENO_step!()` will automatically dispatch to the array types if the argument `backend` is provided. See the KernelAbstractions.jl documentation for more details on how to set up the GPU backend.
 
+Simplex-constrained material fractions use the same phase ordering and boundary
+semantics on every backend:
+
+```julia
+scheme = MultiphaseWENOScheme(phases, backend;
+    boundary = ntuple(_ -> PeriodicBC(), 4), stag = true)
+WENO_step!(phases, velocity, scheme, Δt, Δx, Δy, backend)
+
+# Chmy fields
+scheme = MultiphaseWENOScheme(phases, grid;
+    boundary = ntuple(_ -> PeriodicBC(), 4), stag = true)
+WENO_step!(phases, velocity, scheme, Δt, Δx, Δy, grid, arch)
+```
+
+For Chmy schemes, tangential arrays carried by `PrescribedInflowBC` are copied to the
+same backend as the phase fields during construction. It is therefore valid to supply
+ordinary host arrays when constructing a GPU-backed Chmy scheme; the scheme retains the
+backend copies used by its kernels.
+
+KernelAbstractions CPU tests verify the backend-generic multiphase kernels. Actual GPU
+execution requires a device-enabled downstream test job.
+
 
 
 
@@ -93,7 +115,7 @@ while t < tmax
 end
 
 f = Figure(size = (800, 600), dpi = 400)
-ax = Axis(f[1, 1], title = "1D linear advection after $period periods", xlabel = "x", ylabel = "u")
+ax = Axis(f[1, 1], title = "1D linear advection after \$period periods", xlabel = "x", ylabel = "u")
 lines!(ax, x, u0_vec, label = "Exact", linestyle = :dash, color = :red)
 scatter!(ax, x, u, label = "WENO5")
 xlims!(ax, x_min, x_max)

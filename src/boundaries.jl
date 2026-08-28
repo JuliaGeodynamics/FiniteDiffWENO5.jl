@@ -70,7 +70,15 @@ function tangential_size(sizes::NTuple{N,Int}, dimension) where {N}
     return ntuple(i -> sizes[i < dimension ? i : i + 1], N - 1)
 end
 
-function validate_boundary(boundary, N, sizes = nothing)
+"""
+    normalize_boundary_faces(boundary, N)
+
+Check the face count and entry kinds, then map legacy integer codes onto typed boundary
+conditions. This is the half of `validate_boundary` that does not inspect the *value*
+carried by a `PrescribedInflowBC`, so it can be shared by the scalar route and by the
+multiphase route, whose inflow values are tuples that the scalar validator rejects.
+"""
+function normalize_boundary_faces(boundary, N)
     faces = boundary_faces(boundary)
     length(faces) == 2N || throw(ArgumentError(
         "boundary must contain $(2N) face conditions for $(N)D data, got " *
@@ -78,7 +86,11 @@ function validate_boundary(boundary, N, sizes = nothing)
     all(valid_boundary, faces) || throw(ArgumentError(
         "boundary entries must be PeriodicBC(), ExtrapolateBC(), " *
         "PrescribedInflowBC(value), or a legacy integer code 0, 1, or 2"))
-    faces = map(normalize_boundary, faces)
+    return map(normalize_boundary, faces)
+end
+
+function validate_boundary(boundary, N, sizes = nothing)
+    faces = normalize_boundary_faces(boundary, N)
 
     if sizes !== nothing
         for face in eachindex(faces)

@@ -9,6 +9,7 @@ makedocs(
         "Home" => "index.md",
         "Getting Started" => "GettingStarted.md",
         "Background" => "background.md",
+        "GPU and backends" => "GPU.md",
         "API" => "API.md",
     ],
 )

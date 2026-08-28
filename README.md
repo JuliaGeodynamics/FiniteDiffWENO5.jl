@@ -32,7 +32,10 @@ julia>]
 
 ## Features
 
-The package currently exports only two main functions: `WENOScheme()`, that is used to create a WENO scheme struct containing all the necessary information for the WENO method, and `WENO_step!()`, that performs one step of the time integration using the WENO-Z method and a 3rd-order Runge-Kutta method. The grid and the initial condition must be defined by the user.
+The main API consists of `WENOScheme`, `MultiphaseWENOScheme`, and `WENO_step!`.
+`WENOScheme` transports one scalar or several unrelated fields. `MultiphaseWENOScheme`
+simultaneously transports material fractions constrained by `0 ≤ ϕₖ ≤ 1` and
+`Σₖϕₖ = 1`. The grid and initial conditions are defined by the user.
 
 ## Example
 
@@ -196,6 +199,25 @@ WENO_step!((c1, c2, c3), v, weno, Δt, Δx, Δy, backend;
 WENO_step!((c1, c2, c3), v, weno, Δt, Δx, Δy, grid, arch;
     u_min = (0.0, 0.0, 0.0), u_max = (1.0, 1.0, 1.0))
 ```
+
+The tuple interface above treats the fields independently and does not preserve their
+sum. For material fractions, use the simultaneous simplex operator:
+
+```julia
+ϕ1 = fill(0.2, nx, ny)
+ϕ2 = fill(0.3, nx, ny)
+ϕ3 = 1 .- ϕ1 .- ϕ2
+phases = (ϕ1, ϕ2, ϕ3)
+
+bc = ntuple(_ -> PeriodicBC(), 4)
+scheme = MultiphaseWENOScheme(phases; boundary = bc, stag = true)
+WENO_step!(phases, v, scheme, Δt, Δx, Δy)
+```
+
+The input must already be a valid composition. Under a stable explicit CFL, shared
+WENO-Z weights and one common convex limiter preserve the bounds and pointwise sum
+without post-step clipping or renormalisation. See
+`examples/2D/2D_multiphase_rotation.jl` for a complete three-phase example.
 
 ## Funding & author
 
