@@ -19,19 +19,23 @@ using FiniteDiffWENO5
 
         # Legacy integer codes remain accepted for existing callers.
         @test WENOScheme(zeros(8); boundary = (2, 2)).boundary ==
-              (PeriodicBC(), PeriodicBC())
+            (PeriodicBC(), PeriodicBC())
         @test WENOScheme(zeros(8); boundary = (0, 1)).boundary ==
-              (ExtrapolateBC(), ExtrapolateBC())
+            (ExtrapolateBC(), ExtrapolateBC())
 
         @test_throws DimensionMismatch WENOScheme(
             zeros(6, 5);
-            boundary = (PrescribedInflowBC(ones(4)), ExtrapolateBC(),
-                        ExtrapolateBC(), ExtrapolateBC()),
+            boundary = (
+                PrescribedInflowBC(ones(4)), ExtrapolateBC(),
+                ExtrapolateBC(), ExtrapolateBC(),
+            ),
         )
         @test_throws ArgumentError WENOScheme(
             zeros(6, 5);
-            boundary = (PrescribedInflowBC([1.0, NaN, 1.0, 1.0, 1.0]),
-                        ExtrapolateBC(), ExtrapolateBC(), ExtrapolateBC()),
+            boundary = (
+                PrescribedInflowBC([1.0, NaN, 1.0, 1.0, 1.0]),
+                ExtrapolateBC(), ExtrapolateBC(), ExtrapolateBC(),
+            ),
         )
         @test_throws ArgumentError WENOScheme(
             zeros(8);
@@ -89,8 +93,10 @@ using FiniteDiffWENO5
         velocity = (; x = ones(nx + 1, ny), y = zeros(nx, ny + 1))
         weno = WENOScheme(
             u;
-            boundary = (PrescribedInflowBC(west_temperature), ExtrapolateBC(),
-                        ExtrapolateBC(), ExtrapolateBC()),
+            boundary = (
+                PrescribedInflowBC(west_temperature), ExtrapolateBC(),
+                ExtrapolateBC(), ExtrapolateBC(),
+            ),
             stag = true,
             multithreading = false,
         )
@@ -100,15 +106,17 @@ using FiniteDiffWENO5
         @test all(>(0), u[1, :])
         @test u[1, end] > u[1, 1]
 
-        east_temperature = collect(11.0:10.0+ny)
-        bot_temperature = collect(21.0:20.0+nx)
-        top_temperature = collect(31.0:30.0+nx)
+        east_temperature = collect(11.0:(10.0 + ny))
+        bot_temperature = collect(21.0:(20.0 + nx))
+        top_temperature = collect(31.0:(30.0 + nx))
         weno = WENOScheme(
             u;
-            boundary = (PrescribedInflowBC(west_temperature),
-                        PrescribedInflowBC(east_temperature),
-                        PrescribedInflowBC(bot_temperature),
-                        PrescribedInflowBC(top_temperature)),
+            boundary = (
+                PrescribedInflowBC(west_temperature),
+                PrescribedInflowBC(east_temperature),
+                PrescribedInflowBC(bot_temperature),
+                PrescribedInflowBC(top_temperature),
+            ),
             stag = true,
             multithreading = false,
         )
@@ -122,11 +130,11 @@ using FiniteDiffWENO5
     @testset "3D face profiles" begin
         nx, ny, nz = 5, 4, 3
         u = zeros(nx, ny, nz)
-        xlo = reshape(collect(1.0:ny*nz), ny, nz)
+        xlo = reshape(collect(1.0:(ny * nz)), ny, nz)
         xhi = xlo .+ 20
-        ylo = reshape(collect(1.0:nx*nz), nx, nz) .+ 40
+        ylo = reshape(collect(1.0:(nx * nz)), nx, nz) .+ 40
         yhi = ylo .+ 20
-        zlo = reshape(collect(1.0:nx*ny), nx, ny) .+ 80
+        zlo = reshape(collect(1.0:(nx * ny)), nx, ny) .+ 80
         zhi = zlo .+ 20
         velocity = (
             x = zeros(nx + 1, ny, nz),
@@ -135,9 +143,11 @@ using FiniteDiffWENO5
         )
         weno = WENOScheme(
             u;
-            boundary = (PrescribedInflowBC(xlo), PrescribedInflowBC(xhi),
-                        PrescribedInflowBC(ylo), PrescribedInflowBC(yhi),
-                        PrescribedInflowBC(zlo), PrescribedInflowBC(zhi)),
+            boundary = (
+                PrescribedInflowBC(xlo), PrescribedInflowBC(xhi),
+                PrescribedInflowBC(ylo), PrescribedInflowBC(yhi),
+                PrescribedInflowBC(zlo), PrescribedInflowBC(zhi),
+            ),
             stag = true,
             multithreading = false,
         )
@@ -159,8 +169,10 @@ using FiniteDiffWENO5
             velocity = (; x = ones(nx + 1, ny), y = zeros(nx, ny + 1))
             weno = WENOScheme(
                 u;
-                boundary = (PrescribedInflowBC(300.0), ExtrapolateBC(),
-                            ExtrapolateBC(), ExtrapolateBC()),
+                boundary = (
+                    PrescribedInflowBC(300.0), ExtrapolateBC(),
+                    ExtrapolateBC(), ExtrapolateBC(),
+                ),
                 stag = true,
                 multithreading = false,
             )

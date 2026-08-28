@@ -1,5 +1,6 @@
 @kernel inbounds = true function multiphase_WENO_flux_KA_1D!(
-        fl, fr, state, boundary, nx, χ, γ, ζ, ϵ, phase_count::Val{NP}, g, O) where {NP}
+        fl, fr, state, boundary, nx, χ, γ, ζ, ϵ, phase_count::Val{NP}, g, O
+    ) where {NP}
     I = @index(Global, NTuple)
     I = I + O
     i = I[1]
@@ -10,10 +11,16 @@
     iee = right_index(i, 1, nx, boundary[2])
     ieee = right_index(i, 2, nx, boundary[2])
 
-    stencil_l = ntuple(q -> (
-        state[q][iwww], state[q][iww], state[q][iw], state[q][ie], state[q][iee]), phase_count)
-    stencil_r = ntuple(q -> (
-        state[q][iww], state[q][iw], state[q][ie], state[q][iee], state[q][ieee]), phase_count)
+    stencil_l = ntuple(
+        q -> (
+            state[q][iwww], state[q][iww], state[q][iw], state[q][ie], state[q][iee],
+        ), phase_count
+    )
+    stencil_r = ntuple(
+        q -> (
+            state[q][iww], state[q][iw], state[q][ie], state[q][iee], state[q][ieee],
+        ), phase_count
+    )
     up = multiphase_reconstruction_upwind(stencil_l, χ, γ, ζ, ϵ)
     dn = multiphase_reconstruction_downwind(stencil_r, χ, γ, ζ, ϵ)
     up = limit_simplex(up, ntuple(q -> state[q][iw], phase_count))
@@ -36,7 +43,8 @@
 end
 
 @kernel inbounds = true function multiphase_semi_staggered_KA_1D!(
-        du, state, fl, fr, v, divv, Δx_, ::Val{NP}, g, O) where {NP}
+        du, state, fl, fr, v, divv, Δx_, ::Val{NP}, g, O
+    ) where {NP}
     I = @index(Global, NTuple)
     I = I + O
     i = I[1]
@@ -54,7 +62,8 @@ end
 end
 
 @kernel inbounds = true function multiphase_semi_collocated_KA_1D!(
-        du, fl, fr, v, Δx_, ::Val{NP}, g, O) where {NP}
+        du, fl, fr, v, Δx_, ::Val{NP}, g, O
+    ) where {NP}
     I = @index(Global, NTuple)
     I = I + O
     i = I[1]
@@ -65,7 +74,8 @@ end
 end
 
 @kernel inbounds = true function multiphase_RK_update_KA!(
-        dest, initial, stage, du, a, b, c, Δt, ::Val{NP}, g, O) where {NP}
+        dest, initial, stage, du, a, b, c, Δt, ::Val{NP}, g, O
+    ) where {NP}
     I = @index(Global, Cartesian)
     I = I + O
     for q in 1:NP
@@ -74,65 +84,80 @@ end
 end
 
 if nameof(@__MODULE__) == :KAExt
-function WENO_step!(
-        phases::Tuple{A, Vararg{A, M}},
-        v::NamedTuple{(:x,), <:Tuple{<:AbstractVector{<:Real}}},
-        scheme::MultiphaseWENOScheme{T, NP}, Δt, Δx, backend::Backend,
-    ) where {M, A <: AbstractVector{<:Real}, T, NP}
-    M + 1 == NP || throw(DimensionMismatch(
-        "scheme was built for $NP phases but $(M + 1) were given"))
-    for q in 1:NP
-        @assert get_backend(phases[q]) == backend
-    end
-    @assert get_backend(v.x) == backend
+    function WENO_step!(
+            phases::Tuple{A, Vararg{A, M}},
+            v::NamedTuple{(:x,), <:Tuple{<:AbstractVector{<:Real}}},
+            scheme::MultiphaseWENOScheme{T, NP}, Δt, Δx, backend::Backend,
+        ) where {M, A <: AbstractVector{<:Real}, T, NP}
+        M + 1 == NP || throw(
+            DimensionMismatch(
+                "scheme was built for $NP phases but $(M + 1) were given"
+            )
+        )
+        for q in 1:NP
+            @assert get_backend(phases[q]) == backend
+        end
+        @assert get_backend(v.x) == backend
 
-    (; fl, fr, ut, du, divv, boundary, stag, χ, γ, ζ, ϵ) = scheme
-    nx = size(phases[1], 1)
-    Δx_ = inv(Δx)
-    phase_count = Val(NP)
-    flux_kernel = multiphase_WENO_flux_KA_1D!(backend)
-    update_kernel = multiphase_RK_update_KA!(backend)
-    semi_kernel = stag ? multiphase_semi_staggered_KA_1D!(backend) :
-        multiphase_semi_collocated_KA_1D!(backend)
+        (; fl, fr, ut, du, divv, boundary, stag, χ, γ, ζ, ϵ) = scheme
+        nx = size(phases[1], 1)
+        Δx_ = inv(Δx)
+        phase_count = Val(NP)
+        flux_kernel = multiphase_WENO_flux_KA_1D!(backend)
+        update_kernel = multiphase_RK_update_KA!(backend)
+        semi_kernel = stag ? multiphase_semi_staggered_KA_1D!(backend) :
+            multiphase_semi_collocated_KA_1D!(backend)
 
-    flux_kernel(fl.x, fr.x, phases, boundary, nx, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
-        ndrange = size(fl.x[1]))
-    synchronize(backend)
-    if stag
-        semi_kernel(du, phases, fl, fr, v, divv, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-    else
-        semi_kernel(du, fl, fr, v, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-    end
-    synchronize(backend)
-    update_kernel(ut, phases, phases, du, 1.0, 0.0, 1.0, Δt, phase_count, nothing, Offset0;
-        ndrange = size(ut[1]))
-    synchronize(backend)
+        flux_kernel(
+            fl.x, fr.x, phases, boundary, nx, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
+            ndrange = size(fl.x[1])
+        )
+        synchronize(backend)
+        if stag
+            semi_kernel(du, phases, fl, fr, v, divv, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
+        else
+            semi_kernel(du, fl, fr, v, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
+        end
+        synchronize(backend)
+        update_kernel(
+            ut, phases, phases, du, 1.0, 0.0, 1.0, Δt, phase_count, nothing, Offset0;
+            ndrange = size(ut[1])
+        )
+        synchronize(backend)
 
-    flux_kernel(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
-        ndrange = size(fl.x[1]))
-    synchronize(backend)
-    if stag
-        semi_kernel(du, ut, fl, fr, v, divv, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-    else
-        semi_kernel(du, fl, fr, v, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-    end
-    synchronize(backend)
-    update_kernel(ut, phases, ut, du, 0.75, 0.25, 0.25, Δt, phase_count, nothing, Offset0;
-        ndrange = size(ut[1]))
-    synchronize(backend)
+        flux_kernel(
+            fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
+            ndrange = size(fl.x[1])
+        )
+        synchronize(backend)
+        if stag
+            semi_kernel(du, ut, fl, fr, v, divv, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
+        else
+            semi_kernel(du, fl, fr, v, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
+        end
+        synchronize(backend)
+        update_kernel(
+            ut, phases, ut, du, 0.75, 0.25, 0.25, Δt, phase_count, nothing, Offset0;
+            ndrange = size(ut[1])
+        )
+        synchronize(backend)
 
-    flux_kernel(fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
-        ndrange = size(fl.x[1]))
-    synchronize(backend)
-    if stag
-        semi_kernel(du, ut, fl, fr, v, divv, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-    else
-        semi_kernel(du, fl, fr, v, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
+        flux_kernel(
+            fl.x, fr.x, ut, boundary, nx, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
+            ndrange = size(fl.x[1])
+        )
+        synchronize(backend)
+        if stag
+            semi_kernel(du, ut, fl, fr, v, divv, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
+        else
+            semi_kernel(du, fl, fr, v, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
+        end
+        synchronize(backend)
+        update_kernel(
+            phases, phases, ut, du, 1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0,
+            Δt, phase_count, nothing, Offset0; ndrange = size(phases[1])
+        )
+        synchronize(backend)
+        return nothing
     end
-    synchronize(backend)
-    update_kernel(phases, phases, ut, du, 1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0,
-        Δt, phase_count, nothing, Offset0; ndrange = size(phases[1]))
-    synchronize(backend)
-    return nothing
-end
 end

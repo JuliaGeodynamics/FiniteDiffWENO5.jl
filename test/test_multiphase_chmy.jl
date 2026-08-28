@@ -22,8 +22,8 @@ KernelAbstractions.get_backend(::ChmyTaggedProfile) = ChmyForeignBackend()
             x = (I[1] - 0.5) / dims[1]
             y = length(dims) >= 2 ? (I[2] - 0.5) / dims[2] : 0.0
             z = length(dims) == 3 ? (I[3] - 0.5) / dims[3] : 0.0
-            p1[I] = 0.30 + 0.06sinpi(2x) * cospi(2y)
-            p2[I] = 0.30 + 0.06cospi(2x) * cospi(2z)
+            p1[I] = 0.3 + 0.06sinpi(2x) * cospi(2y)
+            p2[I] = 0.3 + 0.06cospi(2x) * cospi(2z)
         end
         return (p1, p2, 1 .- p1 .- p2)
     end
@@ -52,7 +52,8 @@ KernelAbstractions.get_backend(::ChmyTaggedProfile) = ChmyForeignBackend()
     @testset "inflow profiles are adapted to the field backend" begin
         nx, ny = 8, 6
         grid = UniformGrid(
-            arch; origin = (0.0, 0.0), extent = (1.0, 1.0), dims = (nx, ny))
+            arch; origin = (0.0, 0.0), extent = (1.0, 1.0), dims = (nx, ny)
+        )
         fields = chmy_phases(grid, (fill(0.4, nx, ny), fill(0.6, nx, ny)))
         profile1 = ChmyTaggedProfile(fill(0.4, ny))
         profile2 = ChmyTaggedProfile(fill(0.6, ny))
@@ -74,7 +75,7 @@ KernelAbstractions.get_backend(::ChmyTaggedProfile) = ChmyForeignBackend()
         nx = 24
         dx = 1 / nx
         grid = UniformGrid(arch; origin = (0.0,), extent = (1.0,), dims = (nx,))
-        constant = (0.15, 0.35, 0.50)
+        constant = (0.15, 0.35, 0.5)
         initial = ntuple(q -> fill(constant[q], nx), 3)
         ka = map(copy, initial)
         fields = chmy_phases(grid, initial)
@@ -83,9 +84,11 @@ KernelAbstractions.get_backend(::ChmyTaggedProfile) = ChmyForeignBackend()
         set!(velocity.x, vhost.x)
 
         ska = MultiphaseWENOScheme(
-            ka, backend; boundary = periodic_chmy(1), stag = true)
+            ka, backend; boundary = periodic_chmy(1), stag = true
+        )
         schmy = MultiphaseWENOScheme(
-            fields, grid; boundary = periodic_chmy(1), stag = true)
+            fields, grid; boundary = periodic_chmy(1), stag = true
+        )
         for _ in 1:20
             WENO_step!(ka, vhost, ska, 0.05dx, dx, backend)
             WENO_step!(fields, velocity, schmy, 0.05dx, dx, grid, arch)
@@ -102,10 +105,11 @@ KernelAbstractions.get_backend(::ChmyTaggedProfile) = ChmyForeignBackend()
         nx, ny = 14, 12
         dx, dy = 1 / nx, 1 / ny
         grid = UniformGrid(
-            arch; origin = (0.0, 0.0), extent = (1.0, 1.0), dims = (nx, ny))
+            arch; origin = (0.0, 0.0), extent = (1.0, 1.0), dims = (nx, ny)
+        )
         initial = smooth_chmy((nx, ny))
-        profile1 = collect(range(0.55, 0.70, length = ny))
-        profile2 = collect(range(0.30, 0.20, length = ny))
+        profile1 = collect(range(0.55, 0.7, length = ny))
+        profile2 = collect(range(0.3, 0.2, length = ny))
         profile3 = 1 .- profile1 .- profile2
         boundary = (
             PrescribedInflowBC((profile1, profile2, profile3)), ExtrapolateBC(),
@@ -143,9 +147,11 @@ KernelAbstractions.get_backend(::ChmyTaggedProfile) = ChmyForeignBackend()
         set!(vcollocated.x, vcollocated_host.x)
         set!(vcollocated.y, vcollocated_host.y)
         cka = MultiphaseWENOScheme(
-            collocated_ka, backend; boundary = periodic_chmy(2), stag = false)
+            collocated_ka, backend; boundary = periodic_chmy(2), stag = false
+        )
         cchmy = MultiphaseWENOScheme(
-            collocated_fields, grid; boundary = periodic_chmy(2), stag = false)
+            collocated_fields, grid; boundary = periodic_chmy(2), stag = false
+        )
         for _ in 1:20
             WENO_step!(collocated_ka, vcollocated_host, cka, dt, dx, dy, backend)
             WENO_step!(collocated_fields, vcollocated, cchmy, dt, dx, dy, grid, arch)
@@ -158,8 +164,10 @@ KernelAbstractions.get_backend(::ChmyTaggedProfile) = ChmyForeignBackend()
     @testset "3D equivalence smoke test" begin
         nx, ny, nz = 8, 8, 8
         dx, dy, dz = 1 / nx, 1 / ny, 1 / nz
-        grid = UniformGrid(arch; origin = (0.0, 0.0, 0.0),
-            extent = (1.0, 1.0, 1.0), dims = (nx, ny, nz))
+        grid = UniformGrid(
+            arch; origin = (0.0, 0.0, 0.0),
+            extent = (1.0, 1.0, 1.0), dims = (nx, ny, nz)
+        )
         initial = smooth_chmy((nx, ny, nz))
         ka = map(copy, initial)
         fields = chmy_phases(grid, initial)
@@ -174,9 +182,11 @@ KernelAbstractions.get_backend(::ChmyTaggedProfile) = ChmyForeignBackend()
         set!(velocity.z, vhost.z)
 
         ska = MultiphaseWENOScheme(
-            ka, backend; boundary = periodic_chmy(3), stag = true)
+            ka, backend; boundary = periodic_chmy(3), stag = true
+        )
         schmy = MultiphaseWENOScheme(
-            fields, grid; boundary = periodic_chmy(3), stag = true)
+            fields, grid; boundary = periodic_chmy(3), stag = true
+        )
         dt = 0.04min(dx, dy, dz)
         for _ in 1:10
             WENO_step!(ka, vhost, ska, dt, dx, dy, dz, backend)

@@ -28,26 +28,34 @@ import FiniteDiffWENO5: validate_multiphase_boundary, validate_multiphase_inflow
 
         # wrong phase count
         @test_throws ArgumentError MultiphaseWENOScheme(
-            phases; boundary = (PrescribedInflowBC((0.5, 0.5)), ExtrapolateBC()))
+            phases; boundary = (PrescribedInflowBC((0.5, 0.5)), ExtrapolateBC())
+        )
         # sums that miss one
         @test_throws ArgumentError MultiphaseWENOScheme(
-            phases; boundary = (PrescribedInflowBC((0.2, 0.3, 0.49)), ExtrapolateBC()))
+            phases; boundary = (PrescribedInflowBC((0.2, 0.3, 0.49)), ExtrapolateBC())
+        )
         @test_throws ArgumentError MultiphaseWENOScheme(
-            phases; boundary = (PrescribedInflowBC((0.2, 0.3, 0.51)), ExtrapolateBC()))
+            phases; boundary = (PrescribedInflowBC((0.2, 0.3, 0.51)), ExtrapolateBC())
+        )
         # negative and out-of-range components
         @test_throws ArgumentError MultiphaseWENOScheme(
-            phases; boundary = (PrescribedInflowBC((-0.1, 0.6, 0.5)), ExtrapolateBC()))
+            phases; boundary = (PrescribedInflowBC((-0.1, 0.6, 0.5)), ExtrapolateBC())
+        )
         @test_throws ArgumentError MultiphaseWENOScheme(
-            phases; boundary = (PrescribedInflowBC((1.4, -0.2, -0.2)), ExtrapolateBC()))
+            phases; boundary = (PrescribedInflowBC((1.4, -0.2, -0.2)), ExtrapolateBC())
+        )
         # NaN
         @test_throws ArgumentError MultiphaseWENOScheme(
-            phases; boundary = (PrescribedInflowBC((NaN, 0.3, 0.5)), ExtrapolateBC()))
+            phases; boundary = (PrescribedInflowBC((NaN, 0.3, 0.5)), ExtrapolateBC())
+        )
         # a scalar value instead of a composition
         @test_throws ArgumentError MultiphaseWENOScheme(
-            phases; boundary = (PrescribedInflowBC(0.3), ExtrapolateBC()))
+            phases; boundary = (PrescribedInflowBC(0.3), ExtrapolateBC())
+        )
         # a non-numeric component
         @test_throws ArgumentError MultiphaseWENOScheme(
-            phases; boundary = (PrescribedInflowBC((0.2, 0.3, "x")), ExtrapolateBC()))
+            phases; boundary = (PrescribedInflowBC((0.2, 0.3, "x")), ExtrapolateBC())
+        )
 
         # a sum error just inside the tolerance is accepted
         ok = PrescribedInflowBC((0.2, 0.3, 0.5 + 8eps(Float64)))
@@ -82,7 +90,8 @@ import FiniteDiffWENO5: validate_multiphase_boundary, validate_multiphase_inflow
         # wrong profile length
         bad_shape = PrescribedInflowBC((fill(0.2, ny + 1), p2, p3))
         @test_throws DimensionMismatch MultiphaseWENOScheme(
-            phases; boundary = AdvectionBC(west = bad_shape, east = ExtrapolateBC()))
+            phases; boundary = AdvectionBC(west = bad_shape, east = ExtrapolateBC())
+        )
 
         # pointwise sum violated at a single node
         broken = copy(p3)
@@ -90,7 +99,8 @@ import FiniteDiffWENO5: validate_multiphase_boundary, validate_multiphase_inflow
         @test_throws ArgumentError MultiphaseWENOScheme(
             phases;
             boundary = AdvectionBC(
-                west = PrescribedInflowBC((p1, p2, broken)), east = ExtrapolateBC()),
+                west = PrescribedInflowBC((p1, p2, broken)), east = ExtrapolateBC()
+            ),
         )
 
         # a nonfinite entry inside a profile
@@ -99,14 +109,16 @@ import FiniteDiffWENO5: validate_multiphase_boundary, validate_multiphase_inflow
         @test_throws ArgumentError MultiphaseWENOScheme(
             phases;
             boundary = AdvectionBC(
-                west = PrescribedInflowBC((nan_profile, p2, p3)), east = ExtrapolateBC()),
+                west = PrescribedInflowBC((nan_profile, p2, p3)), east = ExtrapolateBC()
+            ),
         )
     end
 
     @testset "scalar route still rejects tuple inflow" begin
         # this is what keeps a phase vector from being silently accepted by WENOScheme
         @test_throws ArgumentError WENOScheme(
-            zeros(8); boundary = (PrescribedInflowBC((0.2, 0.3, 0.5)), ExtrapolateBC()))
+            zeros(8); boundary = (PrescribedInflowBC((0.2, 0.3, 0.5)), ExtrapolateBC())
+        )
 
         # the refactor left face normalization behaviourally identical
         @test normalize_boundary_faces((PeriodicBC(), ExtrapolateBC()), 1) ==
@@ -159,7 +171,8 @@ import FiniteDiffWENO5: validate_multiphase_boundary, validate_multiphase_inflow
         p2 = collect(range(0.1, 0.3; length = ny))
         west = PrescribedInflowBC((fill(0.2, ny), p2, 0.8 .- p2))
         s2 = MultiphaseWENOScheme(
-            phases2; boundary = AdvectionBC(west = west, east = ExtrapolateBC()), stag = true)
+            phases2; boundary = AdvectionBC(west = west, east = ExtrapolateBC()), stag = true
+        )
         apply_multiphase_inflow_boundaries!(s2.fl, s2.fr, s2.boundary)
         for j in 1:ny
             @test s2.fl.x[1][begin, j] == 0.2

@@ -73,34 +73,55 @@ function MultiphaseWENOScheme(
         boundary = nothing, stag::Bool = false, multithreading::Bool = true,
     ) where {NP}
 
-    NP >= 2 || throw(ArgumentError(
+    NP >= 2 || throw(
+        ArgumentError(
             "MultiphaseWENOScheme requires at least two phases, got $NP. " *
-                "Use WENOScheme for a single field."))
+                "Use WENOScheme for a single field."
+        )
+    )
 
-    all(p -> p isa AbstractArray, phases) || throw(ArgumentError(
+    all(p -> p isa AbstractArray, phases) || throw(
+        ArgumentError(
             "MultiphaseWENOScheme requires a tuple of arrays, got " *
-                "$(map(typeof, phases))"))
+                "$(map(typeof, phases))"
+        )
+    )
 
     c0 = first(phases)
     T = eltype(c0)
     N = ndims(c0)
-    1 <= N <= 3 || throw(ArgumentError(
-        "MultiphaseWENOScheme supports 1D, 2D, and 3D fields, got $(N)D"))
+    1 <= N <= 3 || throw(
+        ArgumentError(
+            "MultiphaseWENOScheme supports 1D, 2D, and 3D fields, got $(N)D"
+        )
+    )
 
     for k in 2:NP
         p = phases[k]
-        eltype(p) === T || throw(ArgumentError(
+        eltype(p) === T || throw(
+            ArgumentError(
                 "all phases must share an element type, phase 1 is $(T) but phase $k is " *
-                    "$(eltype(p))"))
-        ndims(p) == N || throw(DimensionMismatch(
+                    "$(eltype(p))"
+            )
+        )
+        ndims(p) == N || throw(
+            DimensionMismatch(
                 "all phases must share a dimensionality, phase 1 is $(N)D but phase $k is " *
-                    "$(ndims(p))D"))
-        axes(p) == axes(c0) || throw(DimensionMismatch(
+                    "$(ndims(p))D"
+            )
+        )
+        axes(p) == axes(c0) || throw(
+            DimensionMismatch(
                 "all phases must share axes, phase 1 has $(axes(c0)) but phase $k has " *
-                    "$(axes(p))"))
-        typeof(p) === typeof(c0) || throw(ArgumentError(
+                    "$(axes(p))"
+            )
+        )
+        typeof(p) === typeof(c0) || throw(
+            ArgumentError(
                 "all phases must share a concrete array type, phase 1 is $(typeof(c0)) " *
-                    "but phase $k is $(typeof(p))"))
+                    "but phase $k is $(typeof(p))"
+            )
+        )
     end
 
     boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))

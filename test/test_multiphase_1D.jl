@@ -14,8 +14,8 @@
     function smooth(nx)
         dx = 1 / nx
         x = range(dx / 2, 1 - dx / 2, length = nx)
-        p1 = @. 0.35 + 0.10 * sinpi(2x)
-        p2 = @. 0.35 + 0.10 * cospi(2x)
+        p1 = @. 0.35 + 0.1 * sinpi(2x)
+        p2 = @. 0.35 + 0.1 * cospi(2x)
         return (p1, p2, 1 .- p1 .- p2)
     end
 
@@ -168,14 +168,16 @@
 
         with_bc = (fill(0.2, nx), fill(0.3, nx), fill(0.5, nx))
         s = MultiphaseWENOScheme(
-            with_bc; boundary = (inflow, ExtrapolateBC()), stag = true, multithreading = false)
+            with_bc; boundary = (inflow, ExtrapolateBC()), stag = true, multithreading = false
+        )
         for _ in 1:20
             WENO_step!(with_bc, v, s, 0.4dx, dx)
         end
 
         without_bc = (fill(0.2, nx), fill(0.3, nx), fill(0.5, nx))
         s0 = MultiphaseWENOScheme(
-            without_bc; boundary = (ExtrapolateBC(), ExtrapolateBC()), stag = true, multithreading = false)
+            without_bc; boundary = (ExtrapolateBC(), ExtrapolateBC()), stag = true, multithreading = false
+        )
         for _ in 1:20
             WENO_step!(without_bc, v, s0, 0.4dx, dx)
         end
@@ -192,7 +194,8 @@
         rev = (fill(0.2, nx), fill(0.3, nx), fill(0.5, nx))
         vrev = (; x = fill(-1.0, nx + 1))
         srev = MultiphaseWENOScheme(
-            rev; boundary = (inflow, ExtrapolateBC()), stag = true, multithreading = false)
+            rev; boundary = (inflow, ExtrapolateBC()), stag = true, multithreading = false
+        )
         for _ in 1:20
             WENO_step!(rev, vrev, srev, 0.4dx, dx)
         end
@@ -210,7 +213,8 @@
         # `WENO_step!(u::Tuple, args...; u_min::Tuple, u_max::Tuple)`, which would advect
         # each phase independently and silently destroy the sum invariant.
         @test_throws MethodError WENO_step!(
-            p3, v, scheme, 0.1, 0.1; u_min = (0.0, 0.0, 0.0), u_max = (1.0, 1.0, 1.0))
+            p3, v, scheme, 0.1, 0.1; u_min = (0.0, 0.0, 0.0), u_max = (1.0, 1.0, 1.0)
+        )
         @test_throws TypeError WENO_step!(p3, v, scheme, 0.1, 0.1; u_min = 0.0, u_max = 1.0)
     end
 

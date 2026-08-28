@@ -1,18 +1,31 @@
 @kernel inbounds = true function multiphase_WENO_flux_KA_3D_x!(
-        fl, fr, state, boundary, nx, χ, γ, ζ, ϵ, phase_count::Val{NP}, g, O) where {NP}
+        fl, fr, state, boundary, nx, χ, γ, ζ, ϵ, phase_count::Val{NP}, g, O
+    ) where {NP}
     I = @index(Global, NTuple)
     i, j, k = I + O
     iwww = left_index(i, 3, nx, boundary[1]); iww = left_index(i, 2, nx, boundary[1])
     iw = left_index(i, 1, nx, boundary[1]); ie = right_index(i, 0, nx, boundary[2])
     iee = right_index(i, 1, nx, boundary[2]); ieee = right_index(i, 2, nx, boundary[2])
-    sl = ntuple(q -> (state[q][iwww, j, k], state[q][iww, j, k],
-        state[q][iw, j, k], state[q][ie, j, k], state[q][iee, j, k]), phase_count)
-    sr = ntuple(q -> (state[q][iww, j, k], state[q][iw, j, k],
-        state[q][ie, j, k], state[q][iee, j, k], state[q][ieee, j, k]), phase_count)
-    up = limit_simplex(multiphase_reconstruction_upwind(sl, χ, γ, ζ, ϵ),
-        ntuple(q -> state[q][iw, j, k], phase_count))
-    dn = limit_simplex(multiphase_reconstruction_downwind(sr, χ, γ, ζ, ϵ),
-        ntuple(q -> state[q][ie, j, k], phase_count))
+    sl = ntuple(
+        q -> (
+            state[q][iwww, j, k], state[q][iww, j, k],
+            state[q][iw, j, k], state[q][ie, j, k], state[q][iee, j, k],
+        ), phase_count
+    )
+    sr = ntuple(
+        q -> (
+            state[q][iww, j, k], state[q][iw, j, k],
+            state[q][ie, j, k], state[q][iee, j, k], state[q][ieee, j, k],
+        ), phase_count
+    )
+    up = limit_simplex(
+        multiphase_reconstruction_upwind(sl, χ, γ, ζ, ϵ),
+        ntuple(q -> state[q][iw, j, k], phase_count)
+    )
+    dn = limit_simplex(
+        multiphase_reconstruction_downwind(sr, χ, γ, ζ, ϵ),
+        ntuple(q -> state[q][ie, j, k], phase_count)
+    )
     for q in 1:NP
         fl[q][i, j, k] = up[q]
         fr[q][i, j, k] = dn[q]
@@ -32,20 +45,33 @@
 end
 
 @kernel inbounds = true function multiphase_WENO_flux_KA_3D_y!(
-        fl, fr, state, boundary, ny, χ, γ, ζ, ϵ, phase_count::Val{NP}, g, O) where {NP}
+        fl, fr, state, boundary, ny, χ, γ, ζ, ϵ, phase_count::Val{NP}, g, O
+    ) where {NP}
     I = @index(Global, NTuple)
     i, j, k = I + O
     jwww = left_index(j, 3, ny, boundary[3]); jww = left_index(j, 2, ny, boundary[3])
     jw = left_index(j, 1, ny, boundary[3]); je = right_index(j, 0, ny, boundary[4])
     jee = right_index(j, 1, ny, boundary[4]); jeee = right_index(j, 2, ny, boundary[4])
-    sl = ntuple(q -> (state[q][i, jwww, k], state[q][i, jww, k],
-        state[q][i, jw, k], state[q][i, je, k], state[q][i, jee, k]), phase_count)
-    sr = ntuple(q -> (state[q][i, jww, k], state[q][i, jw, k],
-        state[q][i, je, k], state[q][i, jee, k], state[q][i, jeee, k]), phase_count)
-    up = limit_simplex(multiphase_reconstruction_upwind(sl, χ, γ, ζ, ϵ),
-        ntuple(q -> state[q][i, jw, k], phase_count))
-    dn = limit_simplex(multiphase_reconstruction_downwind(sr, χ, γ, ζ, ϵ),
-        ntuple(q -> state[q][i, je, k], phase_count))
+    sl = ntuple(
+        q -> (
+            state[q][i, jwww, k], state[q][i, jww, k],
+            state[q][i, jw, k], state[q][i, je, k], state[q][i, jee, k],
+        ), phase_count
+    )
+    sr = ntuple(
+        q -> (
+            state[q][i, jww, k], state[q][i, jw, k],
+            state[q][i, je, k], state[q][i, jee, k], state[q][i, jeee, k],
+        ), phase_count
+    )
+    up = limit_simplex(
+        multiphase_reconstruction_upwind(sl, χ, γ, ζ, ϵ),
+        ntuple(q -> state[q][i, jw, k], phase_count)
+    )
+    dn = limit_simplex(
+        multiphase_reconstruction_downwind(sr, χ, γ, ζ, ϵ),
+        ntuple(q -> state[q][i, je, k], phase_count)
+    )
     for q in 1:NP
         fl[q][i, j, k] = up[q]
         fr[q][i, j, k] = dn[q]
@@ -65,20 +91,33 @@ end
 end
 
 @kernel inbounds = true function multiphase_WENO_flux_KA_3D_z!(
-        fl, fr, state, boundary, nz, χ, γ, ζ, ϵ, phase_count::Val{NP}, g, O) where {NP}
+        fl, fr, state, boundary, nz, χ, γ, ζ, ϵ, phase_count::Val{NP}, g, O
+    ) where {NP}
     I = @index(Global, NTuple)
     i, j, k = I + O
     kwww = left_index(k, 3, nz, boundary[5]); kww = left_index(k, 2, nz, boundary[5])
     kw = left_index(k, 1, nz, boundary[5]); ke = right_index(k, 0, nz, boundary[6])
     kee = right_index(k, 1, nz, boundary[6]); keee = right_index(k, 2, nz, boundary[6])
-    sl = ntuple(q -> (state[q][i, j, kwww], state[q][i, j, kww],
-        state[q][i, j, kw], state[q][i, j, ke], state[q][i, j, kee]), phase_count)
-    sr = ntuple(q -> (state[q][i, j, kww], state[q][i, j, kw],
-        state[q][i, j, ke], state[q][i, j, kee], state[q][i, j, keee]), phase_count)
-    up = limit_simplex(multiphase_reconstruction_upwind(sl, χ, γ, ζ, ϵ),
-        ntuple(q -> state[q][i, j, kw], phase_count))
-    dn = limit_simplex(multiphase_reconstruction_downwind(sr, χ, γ, ζ, ϵ),
-        ntuple(q -> state[q][i, j, ke], phase_count))
+    sl = ntuple(
+        q -> (
+            state[q][i, j, kwww], state[q][i, j, kww],
+            state[q][i, j, kw], state[q][i, j, ke], state[q][i, j, kee],
+        ), phase_count
+    )
+    sr = ntuple(
+        q -> (
+            state[q][i, j, kww], state[q][i, j, kw],
+            state[q][i, j, ke], state[q][i, j, kee], state[q][i, j, keee],
+        ), phase_count
+    )
+    up = limit_simplex(
+        multiphase_reconstruction_upwind(sl, χ, γ, ζ, ϵ),
+        ntuple(q -> state[q][i, j, kw], phase_count)
+    )
+    dn = limit_simplex(
+        multiphase_reconstruction_downwind(sr, χ, γ, ζ, ϵ),
+        ntuple(q -> state[q][i, j, ke], phase_count)
+    )
     for q in 1:NP
         fl[q][i, j, k] = up[q]
         fr[q][i, j, k] = dn[q]
@@ -98,7 +137,8 @@ end
 end
 
 @kernel inbounds = true function multiphase_semi_staggered_KA_3D!(
-        du, state, fl, fr, v, divv, Δx_, Δy_, Δz_, ::Val{NP}, g, O) where {NP}
+        du, state, fl, fr, v, divv, Δx_, Δy_, Δz_, ::Val{NP}, g, O
+    ) where {NP}
     I = @index(Global, Cartesian)
     I = I + O
     i, j, k = I[1], I[2], I[3]
@@ -125,7 +165,8 @@ end
 end
 
 @kernel inbounds = true function multiphase_semi_collocated_KA_3D!(
-        du, fl, fr, v, Δx_, Δy_, Δz_, ::Val{NP}, g, O) where {NP}
+        du, fl, fr, v, Δx_, Δy_, Δz_, ::Val{NP}, g, O
+    ) where {NP}
     I = @index(Global, Cartesian)
     I = I + O
     i, j, k = I[1], I[2], I[3]
@@ -143,61 +184,81 @@ end
 function launch_multiphase_stage_KA_3D!(
         dest, initial, stage, du, fl, fr, v, divv, boundary, stag,
         nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, a, b, c, Δt, phase_count, backend,
-        fx, fy, fz, semi, update)
-    fx(fl.x, fr.x, stage, boundary, nx, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
-        ndrange = size(fl.x[1]))
-    fy(fl.y, fr.y, stage, boundary, ny, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
-        ndrange = size(fl.y[1]))
-    fz(fl.z, fr.z, stage, boundary, nz, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
-        ndrange = size(fl.z[1]))
+        fx, fy, fz, semi, update
+    )
+    fx(
+        fl.x, fr.x, stage, boundary, nx, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
+        ndrange = size(fl.x[1])
+    )
+    fy(
+        fl.y, fr.y, stage, boundary, ny, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
+        ndrange = size(fl.y[1])
+    )
+    fz(
+        fl.z, fr.z, stage, boundary, nz, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
+        ndrange = size(fl.z[1])
+    )
     synchronize(backend)
     if stag
-        semi(du, stage, fl, fr, v, divv, Δx_, Δy_, Δz_, phase_count, nothing, Offset0;
-            ndrange = size(du[1]))
+        semi(
+            du, stage, fl, fr, v, divv, Δx_, Δy_, Δz_, phase_count, nothing, Offset0;
+            ndrange = size(du[1])
+        )
     else
         semi(du, fl, fr, v, Δx_, Δy_, Δz_, phase_count, nothing, Offset0; ndrange = size(du[1]))
     end
     synchronize(backend)
-    update(dest, initial, stage, du, a, b, c, Δt, phase_count, nothing, Offset0;
-        ndrange = size(dest[1]))
+    update(
+        dest, initial, stage, du, a, b, c, Δt, phase_count, nothing, Offset0;
+        ndrange = size(dest[1])
+    )
     synchronize(backend)
     return nothing
 end
 
 if nameof(@__MODULE__) == :KAExt
-function WENO_step!(
-        phases::Tuple{A, Vararg{A, M}},
-        v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractArray{<:Real}, 3}}},
-        scheme::MultiphaseWENOScheme{T, NP}, Δt, Δx, Δy, Δz, backend::Backend,
-    ) where {M, A <: AbstractArray{<:Real, 3}, T, NP}
-    M + 1 == NP || throw(DimensionMismatch(
-        "scheme was built for $NP phases but $(M + 1) were given"))
-    for q in 1:NP
-        @assert get_backend(phases[q]) == backend
-    end
-    @assert get_backend(v.x) == backend
-    @assert get_backend(v.y) == backend
-    @assert get_backend(v.z) == backend
+    function WENO_step!(
+            phases::Tuple{A, Vararg{A, M}},
+            v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractArray{<:Real}, 3}}},
+            scheme::MultiphaseWENOScheme{T, NP}, Δt, Δx, Δy, Δz, backend::Backend,
+        ) where {M, A <: AbstractArray{<:Real, 3}, T, NP}
+        M + 1 == NP || throw(
+            DimensionMismatch(
+                "scheme was built for $NP phases but $(M + 1) were given"
+            )
+        )
+        for q in 1:NP
+            @assert get_backend(phases[q]) == backend
+        end
+        @assert get_backend(v.x) == backend
+        @assert get_backend(v.y) == backend
+        @assert get_backend(v.z) == backend
 
-    (; fl, fr, ut, du, divv, boundary, stag, χ, γ, ζ, ϵ) = scheme
-    nx, ny, nz = size(phases[1])
-    Δx_, Δy_, Δz_ = inv(Δx), inv(Δy), inv(Δz)
-    phase_count = Val(NP)
-    fx = multiphase_WENO_flux_KA_3D_x!(backend)
-    fy = multiphase_WENO_flux_KA_3D_y!(backend)
-    fz = multiphase_WENO_flux_KA_3D_z!(backend)
-    semi = stag ? multiphase_semi_staggered_KA_3D!(backend) :
-        multiphase_semi_collocated_KA_3D!(backend)
-    update = multiphase_RK_update_KA!(backend)
-    launch_multiphase_stage_KA_3D!(ut, phases, phases, du, fl, fr, v, divv,
-        boundary, stag, nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, 1.0, 0.0, 1.0, Δt,
-        phase_count, backend, fx, fy, fz, semi, update)
-    launch_multiphase_stage_KA_3D!(ut, phases, ut, du, fl, fr, v, divv,
-        boundary, stag, nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, 0.75, 0.25, 0.25, Δt,
-        phase_count, backend, fx, fy, fz, semi, update)
-    launch_multiphase_stage_KA_3D!(phases, phases, ut, du, fl, fr, v, divv,
-        boundary, stag, nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, 1.0 / 3.0,
-        2.0 / 3.0, 2.0 / 3.0, Δt, phase_count, backend, fx, fy, fz, semi, update)
-    return nothing
-end
+        (; fl, fr, ut, du, divv, boundary, stag, χ, γ, ζ, ϵ) = scheme
+        nx, ny, nz = size(phases[1])
+        Δx_, Δy_, Δz_ = inv(Δx), inv(Δy), inv(Δz)
+        phase_count = Val(NP)
+        fx = multiphase_WENO_flux_KA_3D_x!(backend)
+        fy = multiphase_WENO_flux_KA_3D_y!(backend)
+        fz = multiphase_WENO_flux_KA_3D_z!(backend)
+        semi = stag ? multiphase_semi_staggered_KA_3D!(backend) :
+            multiphase_semi_collocated_KA_3D!(backend)
+        update = multiphase_RK_update_KA!(backend)
+        launch_multiphase_stage_KA_3D!(
+            ut, phases, phases, du, fl, fr, v, divv,
+            boundary, stag, nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, 1.0, 0.0, 1.0, Δt,
+            phase_count, backend, fx, fy, fz, semi, update
+        )
+        launch_multiphase_stage_KA_3D!(
+            ut, phases, ut, du, fl, fr, v, divv,
+            boundary, stag, nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, 0.75, 0.25, 0.25, Δt,
+            phase_count, backend, fx, fy, fz, semi, update
+        )
+        launch_multiphase_stage_KA_3D!(
+            phases, phases, ut, du, fl, fr, v, divv,
+            boundary, stag, nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, 1.0 / 3.0,
+            2.0 / 3.0, 2.0 / 3.0, Δt, phase_count, backend, fx, fy, fz, semi, update
+        )
+        return nothing
+    end
 end

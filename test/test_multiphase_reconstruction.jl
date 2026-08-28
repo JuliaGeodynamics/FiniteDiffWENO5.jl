@@ -5,9 +5,9 @@ import FiniteDiffWENO5: combined_weno_betas, weno_betas,
 
 # three five-point stencils whose values sum to one at every stencil position
 const STENCILS_3 = (
-    (0.10, 0.15, 0.30, 0.55, 0.40),
-    (0.25, 0.35, 0.20, 0.10, 0.35),
-    (0.65, 0.50, 0.50, 0.35, 0.25),
+    (0.1, 0.15, 0.3, 0.55, 0.4),
+    (0.25, 0.35, 0.2, 0.1, 0.35),
+    (0.65, 0.5, 0.5, 0.35, 0.25),
 )
 
 @testset "multiphase reconstruction" begin
@@ -25,11 +25,13 @@ const STENCILS_3 = (
         # bitwise agreement: the `+ zero` accumulation and the `* inv(NP)` rescaling let
         # the compiler contract the `@muladd` expressions in `weno_betas` differently, so
         # the two paths can differ by one ULP.
-        @test all(isapprox.(
+        @test all(
+            isapprox.(
                 combined_weno_betas((STENCILS_3[1],), χ),
                 weno_betas(STENCILS_3[1]..., χ);
                 rtol = 8eps(Float64),
-            ))
+            )
+        )
 
         # the mean is symmetric under phase permutation
         for perm in ((1, 2, 3), (1, 3, 2), (2, 1, 3), (2, 3, 1), (3, 1, 2), (3, 2, 1))
@@ -73,7 +75,7 @@ const STENCILS_3 = (
     end
 
     @testset "simplex limiter" begin
-        donor = (0.10, 0.25, 0.65)
+        donor = (0.1, 0.25, 0.65)
 
         # lower-bound overshoot
         high = (-0.04, 0.31, 0.73)
@@ -86,7 +88,7 @@ const STENCILS_3 = (
         @test limit_simplex(high, donor) == limited
 
         # upper-bound overshoot
-        donor_hi = (0.80, 0.10, 0.10)
+        donor_hi = (0.8, 0.1, 0.1)
         high_hi = (1.05, 0.02, -0.07)
         θ_hi = simplex_limiter_coefficient(high_hi, donor_hi)
         limited_hi = limit_simplex(high_hi, donor_hi, θ_hi)
@@ -136,7 +138,7 @@ const STENCILS_3 = (
         χ = (13 / 12, 1 / 4)
         ζ = (1 / 3, 7 / 6, 11 / 6, 1 / 6, 5 / 6)
         ϵ = eps(Float64)
-        donor = (0.10, 0.25, 0.65)
+        donor = (0.1, 0.25, 0.65)
         high = (-0.04, 0.31, 0.73)
 
         @test (@inferred combined_weno_betas(STENCILS_3, χ)) isa NTuple{3, Float64}

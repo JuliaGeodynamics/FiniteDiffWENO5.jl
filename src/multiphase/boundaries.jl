@@ -13,49 +13,79 @@ Validate one prescribed inflow composition. Every component must be finite and i
 """
 function validate_multiphase_inflow(bc::PrescribedInflowBC, expected_size, face, NP, ::Type{T}) where {T}
     value = bc.value
-    value isa Tuple || throw(ArgumentError(
+    value isa Tuple || throw(
+        ArgumentError(
             "PrescribedInflowBC on face $face of a multiphase scheme requires a tuple of " *
-                "$NP components, got $(typeof(value))"))
-    length(value) == NP || throw(ArgumentError(
+                "$NP components, got $(typeof(value))"
+        )
+    )
+    length(value) == NP || throw(
+        ArgumentError(
             "PrescribedInflowBC on face $face requires one component per phase " *
-                "($NP), got $(length(value))"))
+                "($NP), got $(length(value))"
+        )
+    )
 
     for k in eachindex(value)
         c = value[k]
         if c isa Real
-            isfinite(c) || throw(ArgumentError(
-                    "PrescribedInflowBC on face $face, phase $k must be finite, got $c"))
-            zero(T) <= c <= one(T) || throw(ArgumentError(
-                    "PrescribedInflowBC on face $face, phase $k must lie in [0,1], got $c"))
+            isfinite(c) || throw(
+                ArgumentError(
+                    "PrescribedInflowBC on face $face, phase $k must be finite, got $c"
+                )
+            )
+            zero(T) <= c <= one(T) || throw(
+                ArgumentError(
+                    "PrescribedInflowBC on face $face, phase $k must lie in [0,1], got $c"
+                )
+            )
         elseif c isa AbstractArray{<:Real}
-            size(c) == expected_size || throw(DimensionMismatch(
+            size(c) == expected_size || throw(
+                DimensionMismatch(
                     "PrescribedInflowBC on face $face, phase $k requires a value array of " *
-                        "size $expected_size, got $(size(c))"))
-            all(isfinite, c) || throw(ArgumentError(
-                    "PrescribedInflowBC on face $face, phase $k contains a nonfinite value"))
-            all(x -> zero(T) <= x <= one(T), c) || throw(ArgumentError(
-                    "PrescribedInflowBC on face $face, phase $k contains a value outside [0,1]"))
+                        "size $expected_size, got $(size(c))"
+                )
+            )
+            all(isfinite, c) || throw(
+                ArgumentError(
+                    "PrescribedInflowBC on face $face, phase $k contains a nonfinite value"
+                )
+            )
+            all(x -> zero(T) <= x <= one(T), c) || throw(
+                ArgumentError(
+                    "PrescribedInflowBC on face $face, phase $k contains a value outside [0,1]"
+                )
+            )
         else
-            throw(ArgumentError(
+            throw(
+                ArgumentError(
                     "PrescribedInflowBC on face $face, phase $k requires a real scalar or " *
-                        "array, got $(typeof(c))"))
+                        "array, got $(typeof(c))"
+                )
+            )
         end
     end
 
     tol = 64 * eps(T)
     if all(c -> c isa Real, value)
-        abs(sum(value) - one(T)) <= tol || throw(ArgumentError(
+        abs(sum(value) - one(T)) <= tol || throw(
+            ArgumentError(
                 "PrescribedInflowBC on face $face must sum to one across phases within " *
-                    "$tol, got $(sum(value))"))
+                    "$tol, got $(sum(value))"
+            )
+        )
     else
         total = zeros(T, expected_size)
         for c in value
             total .+= c
         end
         err = isempty(total) ? zero(T) : maximum(abs, total .- one(T))
-        err <= tol || throw(ArgumentError(
+        err <= tol || throw(
+            ArgumentError(
                 "PrescribedInflowBC on face $face must sum to one at every tangential " *
-                    "point within $tol, largest deviation is $err"))
+                    "point within $tol, largest deviation is $err"
+            )
+        )
     end
     return nothing
 end
@@ -76,7 +106,8 @@ function validate_multiphase_boundary(boundary, N, sizes, NP, ::Type{T}) where {
     for face in eachindex(faces)
         dimension = (face + 1) ÷ 2
         validate_multiphase_inflow(
-            faces[face], tangential_size(sizes, dimension), face, NP, T)
+            faces[face], tangential_size(sizes, dimension), face, NP, T
+        )
     end
     return faces
 end

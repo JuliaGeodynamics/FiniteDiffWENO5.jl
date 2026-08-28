@@ -9,8 +9,8 @@ y = (collect(1:ny) .- 0.5) .* Δy
 
 # A smooth three-material composition. Normalising positive marker functions gives
 # pointwise fractions in [0, 1] whose sum is one.
-w1 = [0.05 + exp(-((xi - 0.32)^2 + (yj - 0.50)^2) / 0.015) for xi in x, yj in y]
-w2 = [0.05 + exp(-((xi - 0.68)^2 + (yj - 0.50)^2) / 0.015) for xi in x, yj in y]
+w1 = [0.05 + exp(-((xi - 0.32)^2 + (yj - 0.5)^2) / 0.015) for xi in x, yj in y]
+w2 = [0.05 + exp(-((xi - 0.68)^2 + (yj - 0.5)^2) / 0.015) for xi in x, yj in y]
 w3 = fill(0.15, nx, ny)
 total = w1 .+ w2 .+ w3
 phases = (w1 ./ total, w2 ./ total, w3 ./ total)
@@ -34,7 +34,8 @@ velocity = (
 )
 boundary = ntuple(_ -> ExtrapolateBC(), 4)
 scheme = MultiphaseWENOScheme(
-    phases; boundary = boundary, stag = true, multithreading = true)
+    phases; boundary = boundary, stag = true, multithreading = true
+)
 
 initial_integrals = map(sum, phases)
 Δt = 0.25 * min(Δx, Δy)^(5 / 3)
@@ -117,8 +118,8 @@ function deformation_initial_phases(nx, ny)
     Δx_, Δy_ = Lx / nx, Ly / ny
     x_ = (collect(1:nx) .- 0.5) .* Δx_
     y_ = (collect(1:ny) .- 0.5) .* Δy_
-    w1_ = [0.05 + exp(-((xi - 0.32)^2 + (yj - 0.50)^2) / 0.015) for xi in x_, yj in y_]
-    w2_ = [0.05 + exp(-((xi - 0.68)^2 + (yj - 0.50)^2) / 0.015) for xi in x_, yj in y_]
+    w1_ = [0.05 + exp(-((xi - 0.32)^2 + (yj - 0.5)^2) / 0.015) for xi in x_, yj in y_]
+    w2_ = [0.05 + exp(-((xi - 0.68)^2 + (yj - 0.5)^2) / 0.015) for xi in x_, yj in y_]
     w3_ = fill(0.15, nx, ny)
     total_ = w1_ .+ w2_ .+ w3_
     return (w1_ ./ total_, w2_ ./ total_, w3_ ./ total_), Δx_, Δy_

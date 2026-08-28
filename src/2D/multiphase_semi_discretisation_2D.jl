@@ -13,11 +13,17 @@ function multiphase_WENO_flux!(state, scheme::MultiphaseWENOScheme{T, NP}, nx, n
         ieee = right_index(i, 2, nx, bRx)
 
         stencil_l = ntuple(
-            k -> (state[k][iwww, j], state[k][iww, j], state[k][iw, j],
-                state[k][ie, j], state[k][iee, j]), valNP)
+            k -> (
+                state[k][iwww, j], state[k][iww, j], state[k][iw, j],
+                state[k][ie, j], state[k][iee, j],
+            ), valNP
+        )
         stencil_r = ntuple(
-            k -> (state[k][iww, j], state[k][iw, j], state[k][ie, j],
-                state[k][iee, j], state[k][ieee, j]), valNP)
+            k -> (
+                state[k][iww, j], state[k][iw, j], state[k][ie, j],
+                state[k][iee, j], state[k][ieee, j],
+            ), valNP
+        )
         up = multiphase_reconstruction_upwind(stencil_l, χ, γ, ζ, ϵ)
         dn = multiphase_reconstruction_downwind(stencil_r, χ, γ, ζ, ϵ)
         up = limit_simplex(up, ntuple(k -> state[k][iw, j], valNP))
@@ -38,11 +44,17 @@ function multiphase_WENO_flux!(state, scheme::MultiphaseWENOScheme{T, NP}, nx, n
         jeee = right_index(j, 2, ny, bRy)
 
         stencil_l = ntuple(
-            k -> (state[k][i, jwww], state[k][i, jww], state[k][i, jw],
-                state[k][i, je], state[k][i, jee]), valNP)
+            k -> (
+                state[k][i, jwww], state[k][i, jww], state[k][i, jw],
+                state[k][i, je], state[k][i, jee],
+            ), valNP
+        )
         stencil_r = ntuple(
-            k -> (state[k][i, jww], state[k][i, jw], state[k][i, je],
-                state[k][i, jee], state[k][i, jeee]), valNP)
+            k -> (
+                state[k][i, jww], state[k][i, jw], state[k][i, je],
+                state[k][i, jee], state[k][i, jeee],
+            ), valNP
+        )
         up = multiphase_reconstruction_upwind(stencil_l, χ, γ, ζ, ϵ)
         dn = multiphase_reconstruction_downwind(stencil_r, χ, γ, ζ, ϵ)
         up = limit_simplex(up, ntuple(k -> state[k][i, jw], valNP))
@@ -58,7 +70,8 @@ function multiphase_WENO_flux!(state, scheme::MultiphaseWENOScheme{T, NP}, nx, n
 end
 
 function multiphase_semi_discretisation!(
-        du, state, v, scheme::MultiphaseWENOScheme{T, NP}, Δx_, Δy_) where {T, NP}
+        du, state, v, scheme::MultiphaseWENOScheme{T, NP}, Δx_, Δy_
+    ) where {T, NP}
     (; fl, fr, stag, divv, multithreading) = scheme
 
     if stag

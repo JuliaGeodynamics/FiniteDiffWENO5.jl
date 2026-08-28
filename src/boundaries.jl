@@ -27,11 +27,11 @@ AdvectionBC(faces::Vararg{AbstractAdvectionBoundary}) = AdvectionBC(faces)
 
 """Convenience constructor for two-dimensional west/east/bottom/top faces."""
 function AdvectionBC(;
-    west = ExtrapolateBC(),
-    east = ExtrapolateBC(),
-    bot = ExtrapolateBC(),
-    top = ExtrapolateBC(),
-)
+        west = ExtrapolateBC(),
+        east = ExtrapolateBC(),
+        bot = ExtrapolateBC(),
+        top = ExtrapolateBC(),
+    )
     return AdvectionBC((west, east, bot, top))
 end
 
@@ -48,25 +48,37 @@ normalize_boundary(boundary::Integer) = boundary == 2 ? PeriodicBC() : Extrapola
 function validate_inflow_value(boundary::PrescribedInflowBC, expected_size, face)
     value = boundary.value
     if value isa Real
-        isfinite(value) || throw(ArgumentError(
-            "PrescribedInflowBC on face $face must be finite, got $value"))
+        isfinite(value) || throw(
+            ArgumentError(
+                "PrescribedInflowBC on face $face must be finite, got $value"
+            )
+        )
     elseif value isa AbstractArray{<:Real}
-        size(value) == expected_size || throw(DimensionMismatch(
-            "PrescribedInflowBC on face $face requires a value array of size " *
-            "$expected_size, got $(size(value))"))
-        all(isfinite, value) || throw(ArgumentError(
-            "PrescribedInflowBC on face $face contains a nonfinite value"))
+        size(value) == expected_size || throw(
+            DimensionMismatch(
+                "PrescribedInflowBC on face $face requires a value array of size " *
+                    "$expected_size, got $(size(value))"
+            )
+        )
+        all(isfinite, value) || throw(
+            ArgumentError(
+                "PrescribedInflowBC on face $face contains a nonfinite value"
+            )
+        )
     else
-        throw(ArgumentError(
-            "PrescribedInflowBC on face $face requires a real scalar or array, " *
-            "got $(typeof(value))"))
+        throw(
+            ArgumentError(
+                "PrescribedInflowBC on face $face requires a real scalar or array, " *
+                    "got $(typeof(value))"
+            )
+        )
     end
     return nothing
 end
 
 validate_inflow_value(::Any, expected_size, face) = nothing
 
-function tangential_size(sizes::NTuple{N,Int}, dimension) where {N}
+function tangential_size(sizes::NTuple{N, Int}, dimension) where {N}
     return ntuple(i -> sizes[i < dimension ? i : i + 1], N - 1)
 end
 
@@ -80,12 +92,18 @@ multiphase route, whose inflow values are tuples that the scalar validator rejec
 """
 function normalize_boundary_faces(boundary, N)
     faces = boundary_faces(boundary)
-    length(faces) == 2N || throw(ArgumentError(
-        "boundary must contain $(2N) face conditions for $(N)D data, got " *
-        "$(length(faces))"))
-    all(valid_boundary, faces) || throw(ArgumentError(
-        "boundary entries must be PeriodicBC(), ExtrapolateBC(), " *
-        "PrescribedInflowBC(value), or a legacy integer code 0, 1, or 2"))
+    length(faces) == 2N || throw(
+        ArgumentError(
+            "boundary must contain $(2N) face conditions for $(N)D data, got " *
+                "$(length(faces))"
+        )
+    )
+    all(valid_boundary, faces) || throw(
+        ArgumentError(
+            "boundary entries must be PeriodicBC(), ExtrapolateBC(), " *
+                "PrescribedInflowBC(value), or a legacy integer code 0, 1, or 2"
+        )
+    )
     return map(normalize_boundary, faces)
 end
 
@@ -96,7 +114,8 @@ function validate_boundary(boundary, N, sizes = nothing)
         for face in eachindex(faces)
             dimension = (face + 1) ÷ 2
             validate_inflow_value(
-                faces[face], tangential_size(sizes, dimension), face)
+                faces[face], tangential_size(sizes, dimension), face
+            )
         end
     end
     return faces

@@ -16,8 +16,10 @@ using KernelAbstractions
     weno = WENOScheme(
         u,
         backend;
-        boundary = (PrescribedInflowBC(west_temperature), ExtrapolateBC(),
-                    ExtrapolateBC(), ExtrapolateBC()),
+        boundary = (
+            PrescribedInflowBC(west_temperature), ExtrapolateBC(),
+            ExtrapolateBC(), ExtrapolateBC(),
+        ),
         stag = true,
     )
     WENO_step!(u, velocity, weno, 0.05dx, dx, dy, backend)

@@ -10,8 +10,11 @@ function WENO_step!(
         v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<:Real}, 2}}},
         scheme::MultiphaseWENOScheme{T, NP}, Δt, Δx, Δy,
     ) where {M, A <: AbstractMatrix{<:Real}, T, NP}
-    M + 1 == NP || throw(DimensionMismatch(
-        "scheme was built for $NP phases but $(M + 1) were given"))
+    M + 1 == NP || throw(
+        DimensionMismatch(
+            "scheme was built for $NP phases but $(M + 1) were given"
+        )
+    )
 
     nx, ny = size(phases[1])
     Δx_, Δy_ = inv(Δx), inv(Δy)

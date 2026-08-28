@@ -25,8 +25,8 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
             x = (I[1] - 0.5) / dims[1]
             y = length(dims) >= 2 ? (I[2] - 0.5) / dims[2] : 0.0
             z = length(dims) == 3 ? (I[3] - 0.5) / dims[3] : 0.0
-            p1[I] = 0.30 + 0.06sinpi(2x) * cospi(2y)
-            p2[I] = 0.30 + 0.06cospi(2x) * cospi(2z)
+            p1[I] = 0.3 + 0.06sinpi(2x) * cospi(2y)
+            p2[I] = 0.3 + 0.06cospi(2x) * cospi(2z)
         end
         return (p1, p2, 1 .- p1 .- p2)
     end
@@ -34,7 +34,8 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
     @testset "backend cache and mismatch validation" begin
         phases = (fill(0.4, 12), fill(0.6, 12))
         scheme = MultiphaseWENOScheme(
-            phases, backend; boundary = periodic_ka(1), stag = true)
+            phases, backend; boundary = periodic_ka(1), stag = true
+        )
         @test all(a -> get_backend(a) == backend, scheme.du)
         @test all(a -> get_backend(a) == backend, scheme.ut)
         @test all(a -> get_backend(a) == backend, scheme.fl.x)
@@ -45,18 +46,22 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
             MultiphaseTaggedArray(fill(0.6, 12), true),
         )
         @test_throws AssertionError MultiphaseWENOScheme(
-            mixed, backend; boundary = periodic_ka(1), stag = true)
+            mixed, backend; boundary = periodic_ka(1), stag = true
+        )
 
         profile_boundary = (
-            PrescribedInflowBC((
-                MultiphaseTaggedArray(fill(0.4, 6), false),
-                MultiphaseTaggedArray(fill(0.6, 6), true),
-            )),
+            PrescribedInflowBC(
+                (
+                    MultiphaseTaggedArray(fill(0.4, 6), false),
+                    MultiphaseTaggedArray(fill(0.6, 6), true),
+                )
+            ),
             ExtrapolateBC(), PeriodicBC(), PeriodicBC(),
         )
         phase2D = (fill(0.4, 8, 6), fill(0.6, 8, 6))
         @test_throws AssertionError MultiphaseWENOScheme(
-            phase2D, backend; boundary = profile_boundary, stag = true)
+            phase2D, backend; boundary = profile_boundary, stag = true
+        )
     end
 
     @testset "1D matches the serial operator" begin
@@ -69,9 +74,11 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
         v = (; x = fill(0.7, nx + 1))
 
         ss = MultiphaseWENOScheme(
-            serial; boundary = periodic_ka(1), stag = true, multithreading = false)
+            serial; boundary = periodic_ka(1), stag = true, multithreading = false
+        )
         sk = MultiphaseWENOScheme(
-            ka, backend; boundary = periodic_ka(1), stag = true)
+            ka, backend; boundary = periodic_ka(1), stag = true
+        )
         for _ in 1:2
             WENO_step!(serial, v, ss, dt, dx)
             WENO_step!(ka, v, sk, dt, dx, backend)
@@ -85,11 +92,12 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
     @testset "divergent flow and constant prescribed inflow" begin
         nx = 32
         dx = 1 / nx
-        constant = (0.15, 0.35, 0.50)
+        constant = (0.15, 0.35, 0.5)
         phases = ntuple(q -> fill(constant[q], nx), 3)
         vdiv = (; x = collect(range(0.3, 0.8, length = nx + 1)))
         scheme = MultiphaseWENOScheme(
-            phases, backend; boundary = periodic_ka(1), stag = true)
+            phases, backend; boundary = periodic_ka(1), stag = true
+        )
         WENO_step!(phases, vdiv, scheme, 0.05dx, dx, backend)
         for q in 1:3
             @test maximum(abs, phases[q] .- constant[q]) <= 128eps(Float64)
@@ -100,7 +108,8 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
         ka = map(copy, serial)
         v = (; x = fill(0.6, nx + 1))
         ss = MultiphaseWENOScheme(
-            serial; boundary = boundary, stag = true, multithreading = false)
+            serial; boundary = boundary, stag = true, multithreading = false
+        )
         sk = MultiphaseWENOScheme(ka, backend; boundary = boundary, stag = true)
         WENO_step!(serial, v, ss, 0.1dx, dx)
         WENO_step!(ka, v, sk, 0.1dx, dx, backend)
@@ -113,8 +122,8 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
         nx, ny = 16, 14
         dx, dy = 1 / nx, 1 / ny
         initial = smooth_ka((nx, ny))
-        profile1 = collect(range(0.55, 0.70, length = ny))
-        profile2 = collect(range(0.30, 0.20, length = ny))
+        profile1 = collect(range(0.55, 0.7, length = ny))
+        profile2 = collect(range(0.3, 0.2, length = ny))
         profile3 = 1 .- profile1 .- profile2
         boundary = (
             PrescribedInflowBC((profile1, profile2, profile3)), ExtrapolateBC(),
@@ -124,7 +133,8 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
         serial = map(copy, initial)
         ka = map(copy, initial)
         ss = MultiphaseWENOScheme(
-            serial; boundary = boundary, stag = true, multithreading = false)
+            serial; boundary = boundary, stag = true, multithreading = false
+        )
         sk = MultiphaseWENOScheme(ka, backend; boundary = boundary, stag = true)
         for _ in 1:10
             WENO_step!(serial, v, ss, 0.08min(dx, dy), dx, dy)
@@ -138,10 +148,13 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
         collocated_serial = map(copy, initial)
         collocated_ka = map(copy, initial)
         vc = (; x = fill(0.4, nx, ny), y = fill(-0.1, nx, ny))
-        cs = MultiphaseWENOScheme(collocated_serial;
-            boundary = periodic_ka(2), stag = false, multithreading = false)
+        cs = MultiphaseWENOScheme(
+            collocated_serial;
+            boundary = periodic_ka(2), stag = false, multithreading = false
+        )
         ck = MultiphaseWENOScheme(
-            collocated_ka, backend; boundary = periodic_ka(2), stag = false)
+            collocated_ka, backend; boundary = periodic_ka(2), stag = false
+        )
         for _ in 1:10
             WENO_step!(collocated_serial, vc, cs, 0.08min(dx, dy), dx, dy)
             WENO_step!(collocated_ka, vc, ck, 0.08min(dx, dy), dx, dy, backend)
@@ -163,9 +176,11 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
             z = fill(0.1, nx, ny, nz + 1),
         )
         ss = MultiphaseWENOScheme(
-            serial; boundary = periodic_ka(3), stag = true, multithreading = false)
+            serial; boundary = periodic_ka(3), stag = true, multithreading = false
+        )
         sk = MultiphaseWENOScheme(
-            ka, backend; boundary = periodic_ka(3), stag = true)
+            ka, backend; boundary = periodic_ka(3), stag = true
+        )
         for _ in 1:10
             WENO_step!(serial, v, ss, 0.05min(dx, dy, dz), dx, dy, dz)
             WENO_step!(ka, v, sk, 0.05min(dx, dy, dz), dx, dy, dz, backend)
@@ -191,7 +206,7 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
             for I in CartesianIndices(profile1)
                 ξ = sum(Tuple(I)) / sum(tangential)
                 profile1[I] = 0.45 + 0.05ξ
-                profile2[I] = 0.30 - 0.02ξ
+                profile2[I] = 0.3 - 0.02ξ
             end
             profile3 = 1 .- profile1 .- profile2
             inflow = PrescribedInflowBC((profile1, profile2, profile3))
@@ -206,9 +221,11 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
             serial = map(copy, initial)
             ka = map(copy, initial)
             ss = MultiphaseWENOScheme(
-                serial; boundary = boundary, stag = true, multithreading = false)
+                serial; boundary = boundary, stag = true, multithreading = false
+            )
             sk = MultiphaseWENOScheme(
-                ka, backend; boundary = boundary, stag = true)
+                ka, backend; boundary = boundary, stag = true
+            )
 
             WENO_step!(serial, velocity, ss, 0.05min(dx, dy, dz), dx, dy, dz)
             WENO_step!(ka, velocity, sk, 0.05min(dx, dy, dz), dx, dy, dz, backend)

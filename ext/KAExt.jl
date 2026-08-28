@@ -41,8 +41,11 @@ function WENOScheme(c0::AbstractArray{T, N}, backend::Backend; boundary = nothin
     boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))
     boundary = validate_boundary(boundary, N, size(c0))
     upwind_mode && any(b -> b isa PrescribedInflowBC, boundary) && throw(
-        ArgumentError("PrescribedInflowBC is supported by WENO5 reconstruction, " *
-                      "but not by upwind_mode"))
+        ArgumentError(
+            "PrescribedInflowBC is supported by WENO5 reconstruction, " *
+                "but not by upwind_mode"
+        )
+    )
 
     # multithreading is always on in this case
     multithreading = true
@@ -90,34 +93,48 @@ function MultiphaseWENOScheme(
         boundary = nothing, stag::Bool = false, multithreading::Bool = true,
     ) where {T, N, A <: AbstractArray{T, N}, M}
     NP = M + 1
-    NP >= 2 || throw(ArgumentError(
-        "MultiphaseWENOScheme requires at least two phases, got $NP. " *
-            "Use WENOScheme for a single field."))
-    1 <= N <= 3 || throw(ArgumentError(
-        "MultiphaseWENOScheme supports 1D, 2D, and 3D fields, got $(N)D"))
+    NP >= 2 || throw(
+        ArgumentError(
+            "MultiphaseWENOScheme requires at least two phases, got $NP. " *
+                "Use WENOScheme for a single field."
+        )
+    )
+    1 <= N <= 3 || throw(
+        ArgumentError(
+            "MultiphaseWENOScheme supports 1D, 2D, and 3D fields, got $(N)D"
+        )
+    )
 
     reference_axes = axes(first(phases))
     for k in 1:NP
-        axes(phases[k]) == reference_axes || throw(DimensionMismatch(
-            "all phases must share axes, phase 1 has $reference_axes but phase $k has " *
-                "$(axes(phases[k]))"))
+        axes(phases[k]) == reference_axes || throw(
+            DimensionMismatch(
+                "all phases must share axes, phase 1 has $reference_axes but phase $k has " *
+                    "$(axes(phases[k]))"
+            )
+        )
         @assert get_backend(phases[k]) == backend "phase $k must use the specified backend"
     end
 
     boundary === nothing && (boundary = ntuple(_ -> ExtrapolateBC(), 2N))
     boundary = validate_multiphase_backend_boundary(
-        boundary, backend, N, size(first(phases)), NP, T)
+        boundary, backend, N, size(first(phases)), NP, T
+    )
 
     labels = (:x, :y, :z)[1:min(N, 3)]
     sizes = size(first(phases))
     valNP = Val(NP)
     backend_zeros(dims) = KernelAbstractions.zeros(backend, T, dims...)
-    fl = NamedTuple{labels}(ntuple(min(N, 3)) do d
-        ntuple(_ -> backend_zeros(flux_size(sizes, d, N)), valNP)
-    end)
-    fr = NamedTuple{labels}(ntuple(min(N, 3)) do d
-        ntuple(_ -> backend_zeros(flux_size(sizes, d, N)), valNP)
-    end)
+    fl = NamedTuple{labels}(
+        ntuple(min(N, 3)) do d
+            ntuple(_ -> backend_zeros(flux_size(sizes, d, N)), valNP)
+        end
+    )
+    fr = NamedTuple{labels}(
+        ntuple(min(N, 3)) do d
+            ntuple(_ -> backend_zeros(flux_size(sizes, d, N)), valNP)
+        end
+    )
     du = ntuple(_ -> backend_zeros(sizes), valNP)
     ut = ntuple(_ -> backend_zeros(sizes), valNP)
     divv = stag ? backend_zeros(sizes) : nothing

@@ -27,8 +27,11 @@ function WENO_step!(
         scheme::MultiphaseWENOScheme{T, NP}, Δt, Δx,
     ) where {M, A <: AbstractVector{<:Real}, T, NP}
 
-    M + 1 == NP || throw(DimensionMismatch(
-            "scheme was built for $NP phases but $(M + 1) were given"))
+    M + 1 == NP || throw(
+        DimensionMismatch(
+            "scheme was built for $NP phases but $(M + 1) were given"
+        )
+    )
 
     nx = size(phases[1], 1)
     Δx_ = inv(Δx)

@@ -64,8 +64,11 @@ function WENOScheme(c0::AbstractArray{T, N}; boundary = nothing, stag::Bool = fa
     boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))
     boundary = validate_boundary(boundary, N, size(c0))
     upwind_mode && any(b -> b isa PrescribedInflowBC, boundary) && throw(
-        ArgumentError("PrescribedInflowBC is supported by WENO5 reconstruction, " *
-                      "but not by upwind_mode"))
+        ArgumentError(
+            "PrescribedInflowBC is supported by WENO5 reconstruction, " *
+                "but not by upwind_mode"
+        )
+    )
 
     # dimension labels
     labels = (:x, :y, :z)[1:min(N, 3)]
