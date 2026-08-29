@@ -134,9 +134,11 @@ end
 """Evaluate `v_x ∂u/∂x + v_y ∂u/∂y` using prepared cell-centred velocity."""
 function material_semi_discretisation_weno5!(du::T, vcenter, weno::WENOScheme, Δx_, Δy_) where {T <: AbstractArray{<:Real, 2}}
     (; fl, fr, multithreading) = weno
-    (size(vcenter.x) == size(du) && size(vcenter.y) == size(du)) || throw(DimensionMismatch(
-        "prepared velocity components must both have size $(size(du))",
-    ))
+    (size(vcenter.x) == size(du) && size(vcenter.y) == size(du)) || throw(
+        DimensionMismatch(
+            "prepared velocity components must both have size $(size(du))",
+        )
+    )
 
     @inbounds @maybe_threads multithreading for I in CartesianIndices(du)
         i, j = Tuple(I)

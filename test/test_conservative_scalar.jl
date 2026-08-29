@@ -34,9 +34,9 @@ function conservative_error(n; stag)
 end
 
 conservative_rates(; stag) =
-    let errors = [first(conservative_error(n; stag)) for n in (64, 128, 256, 512)]
-        log2.(errors[1:(end - 1)] ./ errors[2:end])
-    end
+let errors = [first(conservative_error(n; stag)) for n in (64, 128, 256, 512)]
+    log2.(errors[1:(end - 1)] ./ errors[2:end])
+end
 
 @testset "conservative scalar transport" begin
     @testset "collocated velocity is fifth order" begin

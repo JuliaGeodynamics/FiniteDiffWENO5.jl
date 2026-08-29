@@ -97,7 +97,7 @@
 
             # The normal face velocities are smooth and periodic but have nonzero
             # divergence: ∂ₓvₓ + ∂ᵧvᵧ = 0.3πcos(2πx) - 0.24πsin(2πy).
-            p1 = @. 0.30 + 0.07 * sinpi(2X) * cospi(2Y)
+            p1 = @. 0.3 + 0.07 * sinpi(2X) * cospi(2Y)
             p2 = @. 0.35 + 0.06 * cospi(2X) * sinpi(2Y)
             phases = (p1, p2, 1 .- p1 .- p2)
 

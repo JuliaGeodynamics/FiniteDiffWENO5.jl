@@ -276,7 +276,7 @@ end
         faces = (0:n) .* Δ
         initial() = [
             1 + 0.2 * sinpi(2xi) * cospi(2yj) * cospi(2zk)
-            for xi in x, yj in x, zk in x
+                for xi in x, yj in x, zk in x
         ]
         vx = [1 + 0.2 * sinpi(2xi) for xi in faces, _ in x, _ in x]
         vy = [0.5 + 0.15 * cospi(2yj) for _ in x, yj in faces, _ in x]

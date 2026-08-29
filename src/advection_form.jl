@@ -16,14 +16,20 @@ struct NonConservativeForm <: AbstractAdvectionForm end
 
 """Validate opposite boundary pairs and return periodicity by velocity direction."""
 function velocity_periodicity(boundary, names)
-    return NamedTuple{names}(ntuple(d -> begin
-        lo, hi = boundary[2d - 1], boundary[2d]
-        periodic = lo isa PeriodicBC
-        periodic == (hi isa PeriodicBC) || throw(ArgumentError(
-            "staggered velocity direction $d requires paired periodic boundaries",
-        ))
-        periodic
-    end, length(names)))
+    return NamedTuple{names}(
+        ntuple(
+            d -> begin
+                lo, hi = boundary[2d - 1], boundary[2d]
+                periodic = lo isa PeriodicBC
+                periodic == (hi isa PeriodicBC) || throw(
+                    ArgumentError(
+                        "staggered velocity direction $d requires paired periodic boundaries",
+                    )
+                )
+                periodic
+            end, length(names)
+        )
+    )
 end
 
 function advection_form(form::Symbol)
@@ -42,15 +48,19 @@ that combination explicitly rather than letting a caller lose bound
 preservation without any signal that it happened.
 """
 function validate_scalar_options(form::AbstractAdvectionForm, stag::Bool, lim_ZS::Bool, upwind_mode::Bool)
-    form isa ConservativeForm && lim_ZS && throw(ArgumentError(
-        "lim_ZS=true has no effect for form=:conservative: the conservative " *
-            "split-flux path has no bound-preserving limiter yet. Pass " *
-            "form=:nonconservative for Zhang-Shu bound preservation.",
-    ))
+    form isa ConservativeForm && lim_ZS && throw(
+        ArgumentError(
+            "lim_ZS=true has no effect for form=:conservative: the conservative " *
+                "split-flux path has no bound-preserving limiter yet. Pass " *
+                "form=:nonconservative for Zhang-Shu bound preservation.",
+        )
+    )
     upwind_mode && !supports_upwind_mode(form, stag) &&
-        throw(ArgumentError(
+        throw(
+        ArgumentError(
             "upwind_mode=true supports only form=:conservative, stag=true or " *
-            "form=:nonconservative, stag=false",
-        ))
+                "form=:nonconservative, stag=false",
+        )
+    )
     return nothing
 end

@@ -152,9 +152,11 @@ function conservative_semi_discretisation_weno5!(
     )
     (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading) = weno
     v = vcell.x
-    size(v) == size(u) || throw(DimensionMismatch(
-        "conservative transport needs a cell-centred velocity of size $(size(u)), got $(size(v))",
-    ))
+    size(v) == size(u) || throw(
+        DimensionMismatch(
+            "conservative transport needs a cell-centred velocity of size $(size(u)), got $(size(v))",
+        )
+    )
 
     bL = boundary[1]
     bR = boundary[2]
@@ -198,9 +200,11 @@ function conservative_semi_discretisation_weno5!(
     )
     (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading) = weno
     vx, vy = vcell.x, vcell.y
-    (size(vx) == size(u) && size(vy) == size(u)) || throw(DimensionMismatch(
-        "conservative transport needs cell-centred velocities of size $(size(u))",
-    ))
+    (size(vx) == size(u) && size(vy) == size(u)) || throw(
+        DimensionMismatch(
+            "conservative transport needs cell-centred velocities of size $(size(u))",
+        )
+    )
 
     bLx, bRx, bLy, bRy = boundary
 
@@ -267,9 +271,11 @@ function conservative_semi_discretisation_weno5!(
     )
     (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading) = weno
     vx, vy, vz = vcell.x, vcell.y, vcell.z
-    all(w -> size(w) == size(u), (vx, vy, vz)) || throw(DimensionMismatch(
-        "conservative transport needs cell-centred velocities of size $(size(u))",
-    ))
+    all(w -> size(w) == size(u), (vx, vy, vz)) || throw(
+        DimensionMismatch(
+            "conservative transport needs cell-centred velocities of size $(size(u))",
+        )
+    )
 
     bLx, bRx, bLy, bRy, bLz, bRz = boundary
 

@@ -67,9 +67,11 @@ Structure containing the Weighted Essentially Non-Oscillatory (WENO) scheme of o
 - `du::AbstractArray{T, N}`: Semi-discretisation of the advection term.
 - `ut::AbstractArray{T, N}`: Temporary array for intermediate calculations using Runge-Kutta.
 """
-function WENOScheme(c0::AbstractArray{T, N}; boundary = nothing, form::Symbol,
-                    stag::Bool = false, lim_ZS::Bool = false, multithreading::Bool = true,
-                    upwind_mode::Bool = false) where {T, N}
+function WENOScheme(
+        c0::AbstractArray{T, N}; boundary = nothing, form::Symbol,
+        stag::Bool = false, lim_ZS::Bool = false, multithreading::Bool = true,
+        upwind_mode::Bool = false
+    ) where {T, N}
 
     boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))
     boundary = validate_boundary(boundary, N, size(c0))

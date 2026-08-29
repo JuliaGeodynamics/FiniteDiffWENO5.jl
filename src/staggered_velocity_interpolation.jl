@@ -26,14 +26,18 @@ function eno5_face_to_center!(center::AbstractVector, face::AbstractVector; peri
     n = length(center)
     if periodic
         n >= 5 || throw(ArgumentError("periodic ENO5 interpolation requires at least 5 cells, got $n"))
-        length(face) in (n, n + 1) || throw(DimensionMismatch(
-            "periodic face velocity must have $n or $(n + 1) samples, got $(length(face))",
-        ))
+        length(face) in (n, n + 1) || throw(
+            DimensionMismatch(
+                "periodic face velocity must have $n or $(n + 1) samples, got $(length(face))",
+            )
+        )
     else
         n >= 4 || throw(ArgumentError("nonperiodic ENO5 interpolation requires at least 4 cells, got $n"))
-        length(face) == n + 1 || throw(DimensionMismatch(
-            "nonperiodic face velocity must have $(n + 1) samples, got $(length(face))",
-        ))
+        length(face) == n + 1 || throw(
+            DimensionMismatch(
+                "nonperiodic face velocity must have $(n + 1) samples, got $(length(face))",
+            )
+        )
     end
 
     denominator = oftype(first(face), 128)
@@ -69,9 +73,11 @@ function eno5_stencil_start(face, I::CartesianIndex, direction, i, n, periodic)
     for p in 2:4
         left_ok = eno5_difference_valid(s - 1, p, n, periodic)
         right_ok = eno5_difference_valid(s, p, n, periodic)
-        (!left_ok && !right_ok) && throw(ArgumentError(
-            "ENO5 has no valid stencil at cell $i with $n cells",
-        ))
+        (!left_ok && !right_ok) && throw(
+            ArgumentError(
+                "ENO5 has no valid stencil at cell $i with $n cells",
+            )
+        )
         left = left_ok ? abs(eno5_undivided_difference(face, I, direction, s - 1, p, n, periodic)) : Inf
         right = right_ok ? abs(eno5_undivided_difference(face, I, direction, s, p, n, periodic)) : Inf
         left_ok && (!right_ok || left <= right) && (s -= 1)
@@ -89,12 +95,16 @@ end
 @inline eno5_stencil_start(face::AbstractVector, i, n, periodic) =
     eno5_stencil_start(face, CartesianIndex(i), 1, i, n, periodic)
 
-function validate_face_to_center_direction(center::AbstractArray, face::AbstractArray,
-                                           direction::Int; periodic::Bool)
+function validate_face_to_center_direction(
+        center::AbstractArray, face::AbstractArray,
+        direction::Int; periodic::Bool
+    )
     N = ndims(center)
-    N == ndims(face) || throw(DimensionMismatch(
-        "center velocity is $(N)D but face velocity is $(ndims(face))D",
-    ))
+    N == ndims(face) || throw(
+        DimensionMismatch(
+            "center velocity is $(N)D but face velocity is $(ndims(face))D",
+        )
+    )
     1 <= direction <= N || throw(ArgumentError("invalid velocity direction $direction for $(N)D field"))
     n = size(center, direction)
     for d in 1:N
@@ -103,23 +113,31 @@ function validate_face_to_center_direction(center::AbstractArray, face::Abstract
         end
     end
     if periodic
-        size(face, direction) in (n, n + 1) || throw(DimensionMismatch(
-            "periodic normal face-velocity axis must have $n or $(n + 1) samples",
-        ))
+        size(face, direction) in (n, n + 1) || throw(
+            DimensionMismatch(
+                "periodic normal face-velocity axis must have $n or $(n + 1) samples",
+            )
+        )
     else
-        size(face, direction) == n + 1 || throw(DimensionMismatch(
-            "nonperiodic normal face-velocity axis must have $(n + 1) samples",
-        ))
+        size(face, direction) == n + 1 || throw(
+            DimensionMismatch(
+                "nonperiodic normal face-velocity axis must have $(n + 1) samples",
+            )
+        )
     end
 
     return nothing
 end
 
-function validate_staggered_velocity!(center::NamedTuple, face::NamedTuple;
-                                      periodic::NamedTuple)
-    keys(center) == keys(face) == keys(periodic) || throw(ArgumentError(
-        "center velocity, face velocity, and periodicity must use the same direction labels",
-    ))
+function validate_staggered_velocity!(
+        center::NamedTuple, face::NamedTuple;
+        periodic::NamedTuple
+    )
+    keys(center) == keys(face) == keys(periodic) || throw(
+        ArgumentError(
+            "center velocity, face velocity, and periodicity must use the same direction labels",
+        )
+    )
     for direction in eachindex(keys(center))
         name = keys(center)[direction]
         validate_face_to_center_direction(
@@ -130,14 +148,18 @@ function validate_staggered_velocity!(center::NamedTuple, face::NamedTuple;
     return nothing
 end
 
-function eno5_face_to_center_direction!(center::AbstractArray, face::AbstractArray,
-                                        direction::Int; periodic::Bool)
+function eno5_face_to_center_direction!(
+        center::AbstractArray, face::AbstractArray,
+        direction::Int; periodic::Bool
+    )
     validate_face_to_center_direction(center, face, direction; periodic)
     n = size(center, direction)
-    n >= eno5_minimum_cells(periodic) || throw(ArgumentError(
-        "$(periodic ? "periodic" : "nonperiodic") ENO5 interpolation requires at least " *
-        "$(eno5_minimum_cells(periodic)) cells, got $n",
-    ))
+    n >= eno5_minimum_cells(periodic) || throw(
+        ArgumentError(
+            "$(periodic ? "periodic" : "nonperiodic") ENO5 interpolation requires at least " *
+                "$(eno5_minimum_cells(periodic)) cells, got $n",
+        )
+    )
     denominator = oftype(first(face), 128)
     @inbounds for I in CartesianIndices(center)
         i = I[direction]
@@ -194,8 +216,10 @@ function eno5_face_to_center!(center::NamedTuple, face::NamedTuple; periodic::Na
     names = keys(center)
     ntuple(Val(length(names))) do direction
         name = names[direction]
-        face_to_center_direction!(getproperty(center, name), getproperty(face, name), direction;
-                                  periodic = getproperty(periodic, name))
+        face_to_center_direction!(
+            getproperty(center, name), getproperty(face, name), direction;
+            periodic = getproperty(periodic, name)
+        )
     end
     return center
 end

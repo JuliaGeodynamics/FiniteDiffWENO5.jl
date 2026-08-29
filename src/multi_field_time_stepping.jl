@@ -14,8 +14,10 @@ letting those fall through to the generic forwarder, which dispatches each field
 its own backend-correct single-field `WENO_step!` (and that backend's own device
 `prepare_velocity_*!` kernel) instead.
 """
-function WENO_step!(u::Tuple{A, Vararg{A, M}}, velocity, weno::WENOScheme, args...;
-                    u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}}) where {A <: Array, M}
+function WENO_step!(
+        u::Tuple{A, Vararg{A, M}}, velocity, weno::WENOScheme, args...;
+        u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}}
+    ) where {A <: Array, M}
     velocity_step = prepare_velocity!(weno, velocity)
     # KA's CPU backend also stores fields in `Array`s, but its scalar methods take
     # an additional backend positional argument and do not accept this private

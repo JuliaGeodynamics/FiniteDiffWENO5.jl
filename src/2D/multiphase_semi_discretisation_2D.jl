@@ -74,9 +74,11 @@ function multiphase_material_semi_discretisation!(
         du, vcenter, scheme::MultiphaseWENOScheme{T, NP}, Δx_, Δy_
     ) where {T, NP}
     (; fl, fr, multithreading) = scheme
-    size(vcenter.x) == size(du[1]) == size(vcenter.y) || throw(DimensionMismatch(
-        "prepared velocity components must be collocated with the phases",
-    ))
+    size(vcenter.x) == size(du[1]) == size(vcenter.y) || throw(
+        DimensionMismatch(
+            "prepared velocity components must be collocated with the phases",
+        )
+    )
     @inbounds @maybe_threads multithreading for I in CartesianIndices(du[1])
         i, j = Tuple(I)
         vx, vy = vcenter.x[I], vcenter.y[I]

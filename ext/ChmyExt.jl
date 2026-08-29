@@ -65,9 +65,11 @@ Create a WENO scheme structure for the given field `u` on the specified `grid` u
   `AdvectionBC`. The default is `ExtrapolateBC()` on every face.
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers).
 """
-function WENOScheme(c0::AbstractField{T, N}, grid::StructuredGrid; boundary = nothing,
-                    form::Symbol, stag::Bool = true,
-                    lim_ZS::Bool = false, upwind_mode = false) where {T, N}
+function WENOScheme(
+        c0::AbstractField{T, N}, grid::StructuredGrid; boundary = nothing,
+        form::Symbol, stag::Bool = true,
+        lim_ZS::Bool = false, upwind_mode = false
+    ) where {T, N}
 
     boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))
     sizes = ntuple(i -> grid.axes[i].length, N)
@@ -678,9 +680,11 @@ function WENO_step!(
         grid::StructuredGrid{1}, arch;
         u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}},
     ) where {A <: AbstractField{<:Real, 1}, M}
-    length(u) == length(u_min) == length(u_max) || throw(DimensionMismatch(
-        "one lower and upper bound is required for each field",
-    ))
+    length(u) == length(u_min) == length(u_max) || throw(
+        DimensionMismatch(
+            "one lower and upper bound is required for each field",
+        )
+    )
     nx = grid.axes[1].length
     vstep = prepare_velocity_chmy_1D!(weno, v, nx, grid, arch, Launcher(arch, grid))
     for q in eachindex(u)
@@ -695,9 +699,11 @@ function WENO_step!(
         grid::StructuredGrid{2}, arch;
         u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}},
     ) where {A <: AbstractField{<:Real, 2}, M}
-    length(u) == length(u_min) == length(u_max) || throw(DimensionMismatch(
-        "one lower and upper bound is required for each field",
-    ))
+    length(u) == length(u_min) == length(u_max) || throw(
+        DimensionMismatch(
+            "one lower and upper bound is required for each field",
+        )
+    )
     nx, ny = grid.axes[1].length, grid.axes[2].length
     vstep = prepare_velocity_chmy_2D!(weno, v, nx, ny, grid, arch, Launcher(arch, grid))
     for q in eachindex(u)
@@ -712,9 +718,11 @@ function WENO_step!(
         grid::StructuredGrid{3}, arch;
         u_min::Tuple{Vararg{Real}}, u_max::Tuple{Vararg{Real}},
     ) where {A <: AbstractField{<:Real, 3}, M}
-    length(u) == length(u_min) == length(u_max) || throw(DimensionMismatch(
-        "one lower and upper bound is required for each field",
-    ))
+    length(u) == length(u_min) == length(u_max) || throw(
+        DimensionMismatch(
+            "one lower and upper bound is required for each field",
+        )
+    )
     nx, ny, nz = grid.axes[1].length, grid.axes[2].length, grid.axes[3].length
     vstep = prepare_velocity_chmy_3D!(weno, v, nx, ny, nz, grid, arch, Launcher(arch, grid))
     for q in eachindex(u)

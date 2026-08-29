@@ -22,7 +22,7 @@ end
 
 function scalar_semidiscrete_rates(; stag)
     errors = [scalar_semidiscrete_error(n; stag) for n in (64, 128, 256, 512)]
-    return log2.(errors[1:end-1] ./ errors[2:end])
+    return log2.(errors[1:(end - 1)] ./ errors[2:end])
 end
 
 @testset "scalar semidiscrete baseline" begin
@@ -53,7 +53,7 @@ end
             ux = 0.4π .* cospi.(2 .* x) .- 0.4π .* sinpi.(4 .* x)
             push!(errors, Δx * sum(abs, weno.du .- v_center .* ux))
         end
-        @test all(>(4.5), log2.(errors[1:end-1] ./ errors[2:end]))
+        @test all(>(4.5), log2.(errors[1:(end - 1)] ./ errors[2:end]))
     end
 
     @testset "2D ENO-prepared staggered velocity restores material transport" begin
@@ -78,7 +78,7 @@ end
             uy = [-0.4π * sinpi(2xi) * sinpi(2yj) for xi in x, yj in y]
             push!(errors, Δ^2 * sum(abs, weno.du .- vcenter.x .* ux .- vcenter.y .* uy))
         end
-        @test all(>(4.5), log2.(errors[1:end-1] ./ errors[2:end]))
+        @test all(>(4.5), log2.(errors[1:(end - 1)] ./ errors[2:end]))
     end
 
     @testset "3D ENO-prepared staggered velocity restores material transport" begin
@@ -105,7 +105,7 @@ end
             uz = [-0.2π * sinpi(2xi) * cospi(2yj) * sinpi(2zk) for xi in x, yj in x, zk in x]
             push!(errors, Δ^3 * sum(abs, weno.du .- vcenter.x .* ux .- vcenter.y .* uy .- vcenter.z .* uz))
         end
-        @test all(>(4.5), log2.(errors[1:end-1] ./ errors[2:end]))
+        @test all(>(4.5), log2.(errors[1:(end - 1)] ./ errors[2:end]))
     end
 
     @testset "non-conservative staggered API prepares velocity once per step" begin

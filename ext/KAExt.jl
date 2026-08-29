@@ -37,9 +37,11 @@ Create a WENO scheme structure for the given field `c` using the specified `back
   `AdvectionBC`. The default is `ExtrapolateBC()` on every face.
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers).
 """
-function WENOScheme(c0::AbstractArray{T, N}, backend::Backend; boundary = nothing,
-                    form::Symbol, stag::Bool = true,
-                    lim_ZS::Bool = false, upwind_mode::Bool = false) where {T, N}
+function WENOScheme(
+        c0::AbstractArray{T, N}, backend::Backend; boundary = nothing,
+        form::Symbol, stag::Bool = true,
+        lim_ZS::Bool = false, upwind_mode::Bool = false
+    ) where {T, N}
 
     @assert get_backend(c0) == backend "The type of the input field must match the specified backend."
 

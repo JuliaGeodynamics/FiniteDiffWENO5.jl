@@ -9,13 +9,13 @@ using FiniteDiffWENO5
 
         FiniteDiffWENO5.eno5_face_to_center!(center, face; periodic = false)
 
-        @test center ≈ collect(0.5:1.0:n - 0.5) atol = 128eps(Float64)
+        @test center ≈ collect(0.5:1.0:(n - 0.5)) atol = 128eps(Float64)
     end
 
     @testset "2D direction-labelled velocities interpolate only normally" begin
         nx, ny = 8, 7
-        xface = [Float64(i - 1) + 10j for i in 1:nx + 1, j in 1:ny]
-        yface = [Float64(i) + 10(j - 1) for i in 1:nx, j in 1:ny + 1]
+        xface = [Float64(i - 1) + 10j for i in 1:(nx + 1), j in 1:ny]
+        yface = [Float64(i) + 10(j - 1) for i in 1:nx, j in 1:(ny + 1)]
         center = (; x = zeros(nx, ny), y = zeros(nx, ny))
 
         FiniteDiffWENO5.eno5_face_to_center!(
@@ -44,9 +44,9 @@ using FiniteDiffWENO5
 
     @testset "3D direction-labelled velocities retain tangential coordinates" begin
         nx, ny, nz = 6, 5, 4
-        xface = [Float64(i - 1) + 10j + 100k for i in 1:nx + 1, j in 1:ny, k in 1:nz]
-        yface = [Float64(i) + 10(j - 1) + 100k for i in 1:nx, j in 1:ny + 1, k in 1:nz]
-        zface = [Float64(i) + 10j + 100(k - 1) for i in 1:nx, j in 1:ny, k in 1:nz + 1]
+        xface = [Float64(i - 1) + 10j + 100k for i in 1:(nx + 1), j in 1:ny, k in 1:nz]
+        yface = [Float64(i) + 10(j - 1) + 100k for i in 1:nx, j in 1:(ny + 1), k in 1:nz]
+        zface = [Float64(i) + 10j + 100(k - 1) for i in 1:nx, j in 1:ny, k in 1:(nz + 1)]
         center = (; x = zeros(nx, ny, nz), y = zeros(nx, ny, nz), z = zeros(nx, ny, nz))
 
         FiniteDiffWENO5.eno5_face_to_center!(
@@ -75,6 +75,6 @@ using FiniteDiffWENO5
             exact = sinpi.(2 .* ((1:n) .- 0.5) .* Δx)
             push!(errors, Δx * sum(abs, center .- exact))
         end
-        @test all(>(4.5), log2.(errors[1:end-1] ./ errors[2:end]))
+        @test all(>(4.5), log2.(errors[1:(end - 1)] ./ errors[2:end]))
     end
 end

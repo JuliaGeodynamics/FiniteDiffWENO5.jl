@@ -90,9 +90,11 @@ input is first prepared by `eno5_face_to_center!` at the top-level caller.
 """
 function material_semi_discretisation_weno5!(du::T, vcenter, weno::WENOScheme, Δx_) where {T <: AbstractArray{<:Real, 1}}
     (; fl, fr, multithreading) = weno
-    size(vcenter.x) == size(du) || throw(DimensionMismatch(
-        "prepared x velocity has size $(size(vcenter.x)), expected $(size(du))",
-    ))
+    size(vcenter.x) == size(du) || throw(
+        DimensionMismatch(
+            "prepared x velocity has size $(size(vcenter.x)), expected $(size(du))",
+        )
+    )
 
     @inbounds @maybe_threads multithreading for i in eachindex(du)
         v = vcenter.x[i]
