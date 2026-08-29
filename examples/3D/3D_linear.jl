@@ -35,7 +35,7 @@ function main(; nx = 50, ny = 50, nz = 50)
     end
 
     u = copy(u0)
-    weno = WENOScheme(u; boundary = (2, 2, 2, 2, 2, 2), stag = false, multithreading = true)
+    weno = WENOScheme(u; form = :nonconservative, boundary = (2, 2, 2, 2, 2, 2), stag = false, multithreading = true)
 
     Δt = CFL * min(Δx, Δy, Δz)^(5 / 3)
     tmax = period * L / max(maximum(abs.(vx0)), maximum(abs.(vy0)), maximum(abs.(vz0)))

@@ -89,11 +89,13 @@ for k in eachindex(phases)
 end
 
 ## Convergence study ##########################################################
-# Solid-body rotation is divergence-free (velocity is affine in x, y, so the
-# two-point difference used for `scheme.divv` is exact), and one full period
-# returns the composition to its initial state. The L1 error against that
-# initial condition therefore measures the spatial truncation error of the
-# WENO5-Z reconstruction directly, without the `ϕₖ∇·v` source term degrading it.
+# Solid-body rotation returns the composition to its initial state after one full
+# period, so the L1 error against that initial condition measures spatial
+# truncation error directly. Material transport (`∂ₜϕₖ + v·∇ϕₖ = 0`) is used on
+# both collocated and staggered layouts; on the staggered path the face velocity
+# is first interpolated to cell centers by a fifth-order ENO5 stencil, so the
+# accuracy-limiting mechanism here is that interpolation's own truncation error,
+# not a divergence source term (there is none — see `docs/src/background.md`).
 
 function rotation_initial_phases(nx, ny)
     Δx_, Δy_ = Lx / nx, Ly / ny

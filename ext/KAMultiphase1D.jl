@@ -42,25 +42,6 @@
     end
 end
 
-@kernel inbounds = true function multiphase_semi_staggered_KA_1D!(
-        du, state, fl, fr, v, divv, Δx_, ::Val{NP}, g, O
-    ) where {NP}
-    I = @index(Global, NTuple)
-    I = I + O
-    i = I[1]
-    d = (v.x[i + 1] - v.x[i]) * Δx_
-    divv[i] = d
-    for q in 1:NP
-        fluxdiv = (
-            max(v.x[i + 1], 0) * fl.x[q][i + 1] +
-                min(v.x[i + 1], 0) * fr.x[q][i + 1] -
-                max(v.x[i], 0) * fl.x[q][i] -
-                min(v.x[i], 0) * fr.x[q][i]
-        ) * Δx_
-        du[q][i] = @muladd fluxdiv - state[q][i] * d
-    end
-end
-
 @kernel inbounds = true function multiphase_semi_collocated_KA_1D!(
         du, fl, fr, v, Δx_, ::Val{NP}, g, O
     ) where {NP}
@@ -73,14 +54,36 @@ end
     end
 end
 
-@kernel inbounds = true function multiphase_RK_update_KA!(
-        dest, initial, stage, du, a, b, c, Δt, ::Val{NP}, g, O
+# Stage update with the shared simplex limiter, matching the CPU multiphase
+# stepper. The limiter is applied to the forward-Euler sub-step, and the SSP
+# convex combination is taken of the already-admissible result, so each stage
+# stays on the simplex without breaking the SSP structure.
+@kernel inbounds = true function multiphase_RK_limited_update_KA!(
+        dest, initial, stage, du, a, b, Δt, phase_count::Val{NP}, g, O
     ) where {NP}
     I = @index(Global, Cartesian)
     I = I + O
+    initialT = ntuple(q -> initial[q][I], phase_count)
+    stageT = ntuple(q -> stage[q][I], phase_count)
+    duT = ntuple(q -> du[q][I], phase_count)
+    updated = FiniteDiffWENO5.simplex_rk_stage(initialT, stageT, duT, a, b, Δt)
     for q in 1:NP
-        dest[q][I] = @muladd a * initial[q][I] + b * stage[q][I] - c * Δt * du[q][I]
+        dest[q][I] = updated[q]
     end
+end
+
+"""Interpolate a staggered multiphase velocity to cell centres once per step."""
+function prepare_multiphase_velocity_KA_1D!(scheme, v, nx, backend)
+    scheme.stag || return v
+    scheme.vcenter === nothing && return v
+    FiniteDiffWENO5.validate_staggered_velocity!(scheme.vcenter, v; periodic = scheme.vperiodic)
+    periodic = scheme.vperiodic.x
+    center = scheme.vcenter.x
+    kernel = nx >= FiniteDiffWENO5.eno5_minimum_cells(periodic) ?
+        eno5_face_to_center_KA_1D!(backend) : linear_face_to_center_KA_1D!(backend)
+    kernel(center, v.x, nx, periodic, nothing, Offset0, ndrange = length(center))
+    synchronize(backend)
+    return (; x = center)
 end
 
 if nameof(@__MODULE__) == :KAExt
@@ -99,28 +102,27 @@ if nameof(@__MODULE__) == :KAExt
         end
         @assert get_backend(v.x) == backend
 
-        (; fl, fr, ut, du, divv, boundary, stag, χ, γ, ζ, ϵ) = scheme
+        (; fl, fr, ut, du, boundary, χ, γ, ζ, ϵ) = scheme
         nx = size(phases[1], 1)
         Δx_ = inv(Δx)
         phase_count = Val(NP)
         flux_kernel = multiphase_WENO_flux_KA_1D!(backend)
-        update_kernel = multiphase_RK_update_KA!(backend)
-        semi_kernel = stag ? multiphase_semi_staggered_KA_1D!(backend) :
-            multiphase_semi_collocated_KA_1D!(backend)
+        # Material transport on every layout: a staggered velocity is first
+        # interpolated to cell centres, after which the collocated operator IS the
+        # material operator. This matches the CPU path exactly.
+        semi_kernel = multiphase_semi_collocated_KA_1D!(backend)
+        vcell = prepare_multiphase_velocity_KA_1D!(scheme, v, nx, backend)
+        limited_update = multiphase_RK_limited_update_KA!(backend)
 
         flux_kernel(
             fl.x, fr.x, phases, boundary, nx, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
             ndrange = size(fl.x[1])
         )
         synchronize(backend)
-        if stag
-            semi_kernel(du, phases, fl, fr, v, divv, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-        else
-            semi_kernel(du, fl, fr, v, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-        end
+        semi_kernel(du, fl, fr, vcell, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
         synchronize(backend)
-        update_kernel(
-            ut, phases, phases, du, 1.0, 0.0, 1.0, Δt, phase_count, nothing, Offset0;
+        limited_update(
+            ut, phases, phases, du, 0.0, 1.0, Δt, phase_count, nothing, Offset0;
             ndrange = size(ut[1])
         )
         synchronize(backend)
@@ -130,14 +132,10 @@ if nameof(@__MODULE__) == :KAExt
             ndrange = size(fl.x[1])
         )
         synchronize(backend)
-        if stag
-            semi_kernel(du, ut, fl, fr, v, divv, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-        else
-            semi_kernel(du, fl, fr, v, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-        end
+        semi_kernel(du, fl, fr, vcell, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
         synchronize(backend)
-        update_kernel(
-            ut, phases, ut, du, 0.75, 0.25, 0.25, Δt, phase_count, nothing, Offset0;
+        limited_update(
+            ut, phases, ut, du, 0.75, 0.25, Δt, phase_count, nothing, Offset0;
             ndrange = size(ut[1])
         )
         synchronize(backend)
@@ -147,14 +145,10 @@ if nameof(@__MODULE__) == :KAExt
             ndrange = size(fl.x[1])
         )
         synchronize(backend)
-        if stag
-            semi_kernel(du, ut, fl, fr, v, divv, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-        else
-            semi_kernel(du, fl, fr, v, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-        end
+        semi_kernel(du, fl, fr, vcell, Δx_, phase_count, nothing, Offset0; ndrange = size(du[1]))
         synchronize(backend)
-        update_kernel(
-            phases, phases, ut, du, 1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0,
+        limited_update(
+            phases, phases, ut, du, 1.0 / 3.0, 2.0 / 3.0,
             Δt, phase_count, nothing, Offset0; ndrange = size(phases[1])
         )
         synchronize(backend)

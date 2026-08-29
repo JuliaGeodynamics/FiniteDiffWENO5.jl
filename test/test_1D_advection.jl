@@ -47,7 +47,7 @@
 
 
         u = copy(u0_vec)
-        weno = WENOScheme(u; boundary = (2, 2), stag = true)
+        weno = WENOScheme(u; boundary = (2, 2), form = :conservative, stag = true)
 
         # advection velocity
         a = (; x = ones(nx + 1))
@@ -124,7 +124,7 @@
 
         u = KernelAbstractions.zeros(backend, Float64, nx)
         copyto!(u, u0_vec)
-        weno = WENOScheme(u, backend; boundary = (2, 2), stag = true)
+        weno = WENOScheme(u, backend; boundary = (2, 2), form = :conservative, stag = true)
 
         # advection velocity
         a_vec = ones(nx + 1) .* -1
@@ -207,7 +207,7 @@
 
         u = Field(backend, grid, Center())
         set!(u, u0_vec)
-        weno = WENOScheme(u, grid; boundary = (2, 2), stag = true)
+        weno = WENOScheme(u, grid; boundary = (2, 2), form = :conservative, stag = true)
 
         # advection velocity
         a_vec = ones(nx + 1) .* -1

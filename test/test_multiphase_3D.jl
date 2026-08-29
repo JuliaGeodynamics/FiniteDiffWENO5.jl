@@ -79,7 +79,7 @@
         sc = MultiphaseWENOScheme(
             collocated; boundary = periodic3D(), stag = false, multithreading = false
         )
-        @test sc.divv === nothing
+        @test sc.vcenter === nothing
         for _ in 1:30
             WENO_step!(
                 collocated, (; x = vxc, y = vyc, z = vzc), sc,
@@ -103,7 +103,7 @@
 
         scalar = fill(0.3, n, n, n)
         ws = WENOScheme(
-            scalar; boundary = periodic3D(), stag = true, multithreading = false
+            scalar; boundary = periodic3D(), form = :conservative, stag = true, multithreading = false
         )
         WENO_step!(scalar, v, ws, dt, h, h, h)
         baseline = @allocated WENO_step!(scalar, v, ws, dt, h, h, h)

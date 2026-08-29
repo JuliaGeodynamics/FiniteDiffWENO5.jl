@@ -39,7 +39,7 @@ KernelAbstractions.get_backend(a::MultiphaseTaggedArray) =
         @test all(a -> get_backend(a) == backend, scheme.du)
         @test all(a -> get_backend(a) == backend, scheme.ut)
         @test all(a -> get_backend(a) == backend, scheme.fl.x)
-        @test get_backend(scheme.divv) == backend
+        @test get_backend(scheme.vcenter.x) == backend
 
         mixed = (
             MultiphaseTaggedArray(fill(0.4, 12), false),

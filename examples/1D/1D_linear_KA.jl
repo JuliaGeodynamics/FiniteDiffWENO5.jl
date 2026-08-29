@@ -49,7 +49,7 @@ function main(backend = CPU(), nx = 400)
 
     u = KernelAbstractions.zeros(backend, Float64, nx)
     copyto!(u, u0_vec)
-    weno = WENOScheme(u, backend; boundary = (2, 2), stag = true)
+    weno = WENOScheme(u, backend; form = :nonconservative, boundary = (2, 2), stag = true)
 
     # advection velocity
     a_vec = ones(nx + 1) .* -1

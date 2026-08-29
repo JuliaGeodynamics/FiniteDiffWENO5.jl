@@ -5,6 +5,13 @@ The main API consists of `WENOScheme`, `MultiphaseWENOScheme`, and `WENO_step!`.
 
 `WENOScheme()` is used to create a WENO scheme structure containing all the necessary information for the WENO method, while `WENO_step!()` performs one step of the time integration using the WENO-Z method and a 3rd-order Runge-Kutta method. Refer to the docstrings to see the available options for each function.
 
+`WENOScheme` takes two independent keywords: `form` selects which equation is solved
+(`:conservative` for $\partial_t u + \nabla\cdot(\mathbf{v}u) = 0$, `:nonconservative`
+for $\partial_t u + \mathbf{v}\cdot\nabla u = 0$), and `stag` selects where the velocity
+lives (`false` for collocated with `u`, `true` for face-staggered). All four
+combinations are fifth-order accurate; see [Background](@ref background) for why this
+package treats them as separate choices rather than one implying the other.
+
 Here is a simple example of how to use FiniteDiffWENO5.jl to solve the 1D advection equation using the conservative form on a staggered grid. For more examples, please refer to the folder examples in the repository or the tests in the test folder.
 
 ```julia
@@ -60,7 +67,7 @@ u = copy(u0_vec)
 # staggering = true means that the advection velocity is defined on the sides of the cells and should be of size nx+1 compared to the scalar field u.
 # Multithreading to false means that the computations will be done on a single thread.
 # Set to true to enable multithreading if the Julia session was started with multiple threads (e.g. `julia -t 4`).
-weno = WENOScheme(u; boundary = (PeriodicBC(), PeriodicBC()), stag = true, multithreading = false)
+weno = WENOScheme(u; form = :conservative, boundary = (PeriodicBC(), PeriodicBC()), stag = true, multithreading = false)
 
 # advection velocity with size nx+1 for staggered grid (here constant)
 a = (; x = ones(nx + 1))
@@ -113,7 +120,7 @@ bc = AdvectionBC(
     bot = ExtrapolateBC(),
     top = ExtrapolateBC(),
 )
-weno = WENOScheme(u; boundary = bc, stag = true)
+weno = WENOScheme(u; form = :conservative, boundary = bc, stag = true)
 ```
 
 ## Advecting multiple fields
@@ -139,8 +146,10 @@ c3 = ones(nx, ny)    # component 3
 # Shared velocity field
 v = (; x = ones(nx, ny), y = 0.5 .* ones(nx, ny))
 
-# Create the WENO scheme from any one of the fields (they must all have the same size/type)
-weno = WENOScheme(c1; boundary = (2, 2, 2, 2), stag = false)
+# Create the WENO scheme from any one of the fields (they must all have the same size/type).
+# Independent tracers do not sum to anything meaningful, so either form is valid here;
+# non-conservative is used since the velocity is already collocated.
+weno = WENOScheme(c1; form = :nonconservative, boundary = (2, 2, 2, 2), stag = false)
 
 Δt = 0.7 * min(Δx, Δy)^(5 / 3)
 

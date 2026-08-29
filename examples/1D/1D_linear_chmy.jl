@@ -53,7 +53,7 @@ function main(backend = CPU(), nx = 400)
 
     u = Field(backend, grid, Center())
     set!(u, u0_vec)
-    weno = WENOScheme(u, grid; boundary = (2, 2), stag = true)
+    weno = WENOScheme(u, grid; form = :nonconservative, boundary = (2, 2), stag = true)
 
     # advection velocity
     a_vec = ones(nx + 1) .* -1

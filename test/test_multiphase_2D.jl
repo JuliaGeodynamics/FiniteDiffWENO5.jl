@@ -78,7 +78,7 @@
         sc = MultiphaseWENOScheme(
             collocated; boundary = periodic2D(), stag = false, multithreading = false
         )
-        @test sc.divv === nothing
+        @test sc.vcenter === nothing
         for _ in 1:50
             WENO_step!(collocated, (; x = vxc, y = vyc), sc, 0.08min(dx, dy), dx, dy)
         end
@@ -87,14 +87,64 @@
         end
     end
 
-    @testset "serial allocation matches the scalar floor" begin
+    @testset "smooth periodic compressible material operator is fifth order" begin
+        errors = Float64[]
+        for n in (24, 48, 96)
+            dx = 1 / n
+            x = (collect(1:n) .- 0.5) .* dx
+            X = repeat(x, 1, n)
+            Y = repeat(x', n, 1)
+
+            # The normal face velocities are smooth and periodic but have nonzero
+            # divergence: ∂ₓvₓ + ∂ᵧvᵧ = 0.3πcos(2πx) - 0.24πsin(2πy).
+            p1 = @. 0.30 + 0.07 * sinpi(2X) * cospi(2Y)
+            p2 = @. 0.35 + 0.06 * cospi(2X) * sinpi(2Y)
+            phases = (p1, p2, 1 .- p1 .- p2)
+
+            xf = range(0, 1, length = n + 1)
+            Xfx = repeat(xf, 1, n)
+            Yfx = repeat(x', n + 1, 1)
+            Xfy = repeat(x, 1, n + 1)
+            Yfy = repeat(xf', n, 1)
+            staggered_velocity = (
+                x = 0.7 .+ 0.15 .* sinpi.(2 .* Xfx),
+                y = -0.4 .+ 0.12 .* cospi.(2 .* Yfy),
+            )
+            vx = @. 0.7 + 0.15 * sinpi(2X)
+            vy = @. -0.4 + 0.12 * cospi(2Y)
+
+            scheme = MultiphaseWENOScheme(
+                phases; boundary = periodic2D(), stag = true, multithreading = false
+            )
+            FiniteDiffWENO5.multiphase_WENO_flux!(phases, scheme, n, n)
+            vcenter = FiniteDiffWENO5.prepare_velocity!(scheme, staggered_velocity)
+            FiniteDiffWENO5.multiphase_material_semi_discretisation!(
+                scheme.du, vcenter, scheme, inv(dx), inv(dx)
+            )
+
+            dp1dx = @. 0.14π * cospi(2X) * cospi(2Y)
+            dp1dy = @. -0.14π * sinpi(2X) * sinpi(2Y)
+            dp2dx = @. -0.12π * sinpi(2X) * sinpi(2Y)
+            dp2dy = @. 0.12π * cospi(2X) * cospi(2Y)
+            exact = (
+                vx .* dp1dx .+ vy .* dp1dy,
+                vx .* dp2dx .+ vy .* dp2dy,
+                .-vx .* (dp1dx .+ dp2dx) .- vy .* (dp1dy .+ dp2dy),
+            )
+            push!(errors, sum(k -> sum(abs, scheme.du[k] .- exact[k]), 1:3) / (3n^2))
+        end
+        rates = [log2(errors[i] / errors[i + 1]) for i in 1:2]
+        @test all(>(4.5), rates)
+    end
+
+    @testset "serial allocation has only fixed ENO-preparation overhead" begin
         nx, ny = 20, 18
         dx, dy = 1 / nx, 1 / ny
         v = (; x = fill(0.4, nx + 1, ny), y = fill(-0.2, nx, ny + 1))
 
         scalar = regions2D(nx, ny)[1]
         ws = WENOScheme(
-            scalar; boundary = periodic2D(), stag = true, multithreading = false
+            scalar; boundary = periodic2D(), form = :conservative, stag = true, multithreading = false
         )
         WENO_step!(scalar, v, ws, 0.1min(dx, dy), dx, dy)
         baseline = @allocated WENO_step!(scalar, v, ws, 0.1min(dx, dy), dx, dy)
@@ -104,6 +154,9 @@
             phases; boundary = periodic2D(), stag = true, multithreading = false
         )
         WENO_step!(phases, v, wm, 0.1min(dx, dy), dx, dy)
-        @test (@allocated WENO_step!(phases, v, wm, 0.1min(dx, dy), dx, dy)) <= baseline
+        # Unlike the legacy scalar staggered route, multiphase transport now prepares a
+        # genuinely collocated ENO5 velocity once per step.  Its dispatch overhead is
+        # fixed (not proportional to the grid or number of phases).
+        @test (@allocated WENO_step!(phases, v, wm, 0.1min(dx, dy), dx, dy)) <= baseline + 64
     end
 end

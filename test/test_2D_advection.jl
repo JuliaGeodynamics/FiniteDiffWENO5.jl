@@ -34,7 +34,7 @@
         end
 
         u = copy(u0)
-        weno = WENOScheme(u; boundary = (2, 2, 2, 2), stag = false, multithreading = true)
+        weno = WENOScheme(u; boundary = (2, 2, 2, 2), form = :nonconservative, stag = false, multithreading = true)
 
 
         # grid size
@@ -100,7 +100,7 @@
         u = KernelAbstractions.zeros(backend, Float64, nx, ny)
         copyto!(u, u0)
 
-        weno = WENOScheme(u, backend; boundary = (2, 2, 2, 2), stag = stag)
+        weno = WENOScheme(u, backend; boundary = (2, 2, 2, 2), form = stag ? :conservative : :nonconservative, stag = stag)
 
         if stag
             v = (;

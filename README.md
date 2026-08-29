@@ -10,7 +10,7 @@
 
 FiniteDiffWENO5.jl is a Julia package that implements a finite difference fifth order Weighted Essentially Non-Oscillatory (WENO) method on regular grids for advection terms in partial differential equations for 1D, 2D, and 3D problems. The current implementation is based on the WENO-Z scheme from [Borges et al. (2008)](10.1016/j.jcp.2007.11.038).
 
-Currently, the package focuses on non-conservative form of the advection terms ($\mathbf{v} \cdot \nabla u$) on collocated grid, and conservative form ($\nabla \cdot$ ($\mathbf{v} u$)) on staggered grid with the advection velocity located on the sides of the cells. The time integration is performed using a third-order Strong Stability Preserving Runge-Kutta (SSP-RK3) method. Periodic, extrapolated, and prescribed-inflow boundaries are supported.
+The package solves both the non-conservative form of the advection term ($\mathbf{v} \cdot \nabla u$) and the conservative form ($\nabla \cdot (\mathbf{v} u)$), independently of whether the advection velocity is collocated with $u$ or staggered on the sides of the cells (all four combinations are fifth-order accurate). The time integration is performed using a third-order Strong Stability Preserving Runge-Kutta (SSP-RK3) method. Periodic, extrapolated, and prescribed-inflow boundaries are supported.
 
 The core of the package is written in pure Julia, focusing on performance using CPUs but GPU support is available using KernelAbstractions.jl and Chmy.jl via 2 separate extensions.
 
@@ -95,7 +95,7 @@ c = copy(c0_vec)
 # Here we create a WENO scheme for a staggered grid with periodic boundaries.
 # stag = true means that the advection velocity is defined on the sides
 # of the cells and should be of size nx+1 compared to the scalar field u.
-weno = WENOScheme(c; boundary = (PeriodicBC(), PeriodicBC()), stag = true)
+weno = WENOScheme(c; form = :conservative, boundary = (PeriodicBC(), PeriodicBC()), stag = true)
 
 # advection velocity, here we use a constant velocity of 1.0.
 # It should be provided as a NamedTuple
@@ -151,7 +151,7 @@ bc = AdvectionBC(
     bot = ExtrapolateBC(),
     top = ExtrapolateBC(),
 )
-weno = WENOScheme(c; boundary = bc, stag = true)
+weno = WENOScheme(c; form = :conservative, boundary = bc, stag = true)
 ```
 
 Legacy integer tuples remain accepted. Codes `0` and `1` normalize to
@@ -178,7 +178,7 @@ c3 = ones(nx, ny)
 v = (; x = ones(nx, ny), y = 0.5 .* ones(nx, ny))
 
 # Create the WENO scheme from any one of the fields (they must all have the same size and type)
-weno = WENOScheme(c1; boundary = (2, 2, 2, 2), stag = false)
+weno = WENOScheme(c1; form = :nonconservative, boundary = (2, 2, 2, 2), stag = false)
 
 Δt = 0.7 * min(Δx, Δy)^(5 / 3)
 

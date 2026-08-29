@@ -131,6 +131,24 @@ function semi_discretisation_weno5!(du::T, v, weno::WENOScheme, Δx_, Δy_) wher
     return nothing
 end
 
+"""Evaluate `v_x ∂u/∂x + v_y ∂u/∂y` using prepared cell-centred velocity."""
+function material_semi_discretisation_weno5!(du::T, vcenter, weno::WENOScheme, Δx_, Δy_) where {T <: AbstractArray{<:Real, 2}}
+    (; fl, fr, multithreading) = weno
+    (size(vcenter.x) == size(du) && size(vcenter.y) == size(du)) || throw(DimensionMismatch(
+        "prepared velocity components must both have size $(size(du))",
+    ))
+
+    @inbounds @maybe_threads multithreading for I in CartesianIndices(du)
+        i, j = Tuple(I)
+        vx, vy = vcenter.x[I], vcenter.y[I]
+        du[I] = @muladd max(vx, 0) * (fl.x[i + 1, j] - fl.x[I]) * Δx_ +
+            min(vx, 0) * (fr.x[i + 1, j] - fr.x[I]) * Δx_ +
+            max(vy, 0) * (fl.y[i, j + 1] - fl.y[I]) * Δy_ +
+            min(vy, 0) * (fr.y[i, j + 1] - fr.y[I]) * Δy_
+    end
+    return nothing
+end
+
 function upwind_update_2D!(
         u, v, weno, nx, ny, Δx_, Δy_, Δt
     )
@@ -175,4 +193,20 @@ function upwind_update_2D!(
     end
 
     return u
+end
+
+"""
+    scalar_operator_2D!(du, state, vcell, weno, nx, ny, Δx_, Δy_, u_min, u_max)
+
+Two-dimensional counterpart of [`scalar_operator_1D!`](@ref): select the spatial
+operator from `weno.form`, never from the velocity layout.
+"""
+@inline function scalar_operator_2D!(du, state, vcell, weno::WENOScheme, nx, ny, Δx_, Δy_, u_min, u_max, αx, αy)
+    if !is_conservative(weno.form)
+        WENO_flux!(weno.fl, weno.fr, state, weno, nx, ny, u_max, u_min)
+        material_semi_discretisation_weno5!(du, vcell, weno, Δx_, Δy_)
+    else
+        conservative_semi_discretisation_weno5!(du, state, vcell, weno, nx, ny, Δx_, Δy_, αx, αy)
+    end
+    return nothing
 end

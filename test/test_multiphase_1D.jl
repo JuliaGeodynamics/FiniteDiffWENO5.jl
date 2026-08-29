@@ -31,7 +31,7 @@
 
         # negative control: independent per-phase weights, same grid, velocity, dt, state
         seq = fronts(nx)
-        wscalar = WENOScheme(seq[1]; boundary = periodic1D(), stag = true, multithreading = false)
+        wscalar = WENOScheme(seq[1]; boundary = periodic1D(), form = :conservative, stag = true, multithreading = false)
         for _ in 1:nsteps
             WENO_step!(seq, v, wscalar, dt, dx; u_min = (0.0, 0.0, 0.0), u_max = (1.0, 1.0, 1.0))
         end
@@ -95,18 +95,50 @@
         @test maximum(abs, p[3] .- 0.5) == 0.0
     end
 
-    @testset "collocated velocity needs no divergence source" begin
+    @testset "collocated velocity needs no prepared-velocity buffer" begin
         nx = 64
         dx = 1 / nx
         p = (fill(0.2, nx), fill(0.3, nx), fill(0.5, nx))
         v = (; x = collect(range(0.5, 1.5, length = nx)))
         scheme = MultiphaseWENOScheme(p; boundary = periodic1D(), stag = false, multithreading = false)
-        @test scheme.divv === nothing
+        @test scheme.vcenter === nothing
         for _ in 1:5
             WENO_step!(p, v, scheme, 0.2dx, dx)
         end
         @test maximum(abs, p[1] .- 0.2) == 0.0
         @test maximum(abs, p[3] .- 0.5) == 0.0
+    end
+
+    @testset "staggered material transport uses ENO-prepared velocity" begin
+        nx = 64
+        dx = 1 / nx
+        x = range(dx / 2, 1 - dx / 2, length = nx)
+        initial = (
+            0.3 .+ 0.1 .* sinpi.(2 .* x),
+            0.35 .+ 0.08 .* cospi.(2 .* x),
+            0.35 .- 0.1 .* sinpi.(2 .* x) .- 0.08 .* cospi.(2 .* x),
+        )
+        xf = range(0, 1, length = nx + 1)
+        faces = (; x = 0.8 .+ 0.2 .* sinpi.(2 .* xf))
+
+        staggered = map(copy, initial)
+        sstag = MultiphaseWENOScheme(
+            staggered; boundary = periodic1D(), stag = true, multithreading = false
+        )
+        WENO_step!(staggered, faces, sstag, 0.1dx, dx)
+
+        collocated = map(copy, initial)
+        centers = (; x = similar(collocated[1]))
+        FiniteDiffWENO5.eno5_face_to_center!(centers, faces; periodic = (; x = true))
+        scenter = MultiphaseWENOScheme(
+            collocated; boundary = periodic1D(), stag = false, multithreading = false
+        )
+        WENO_step!(collocated, centers, scenter, 0.1dx, dx)
+
+        for k in 1:3
+            @test staggered[k] ≈ collocated[k] rtol = 32eps(Float64) atol = 32eps(Float64)
+        end
+        @test maxsumerr(staggered) < 1024eps(Float64)
     end
 
     @testset "smooth transport converges at fifth order" begin
@@ -229,7 +261,7 @@
 
         u = fronts(nx)[1]
         v = (; x = fill(1.0, nx + 1))
-        wscalar = WENOScheme(u; boundary = periodic1D(), stag = true, multithreading = false)
+        wscalar = WENOScheme(u; boundary = periodic1D(), form = :conservative, stag = true, multithreading = false)
         WENO_step!(u, v, wscalar, 0.4dx, dx)
         baseline = @allocated WENO_step!(u, v, wscalar, 0.4dx, dx)
 

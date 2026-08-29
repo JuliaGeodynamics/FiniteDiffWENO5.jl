@@ -136,34 +136,6 @@ end
     end
 end
 
-@kernel inbounds = true function multiphase_semi_staggered_KA_3D!(
-        du, state, fl, fr, v, divv, Δx_, Δy_, Δz_, ::Val{NP}, g, O
-    ) where {NP}
-    I = @index(Global, Cartesian)
-    I = I + O
-    i, j, k = I[1], I[2], I[3]
-    d = @muladd (v.x[i + 1, j, k] - v.x[i, j, k]) * Δx_ +
-        (v.y[i, j + 1, k] - v.y[i, j, k]) * Δy_ +
-        (v.z[i, j, k + 1] - v.z[i, j, k]) * Δz_
-    divv[I] = d
-    for q in 1:NP
-        fluxdiv = @muladd (
-            max(v.x[i + 1, j, k], 0) * fl.x[q][i + 1, j, k] +
-                min(v.x[i + 1, j, k], 0) * fr.x[q][i + 1, j, k] -
-                max(v.x[I], 0) * fl.x[q][I] - min(v.x[I], 0) * fr.x[q][I]
-        ) * Δx_ + (
-            max(v.y[i, j + 1, k], 0) * fl.y[q][i, j + 1, k] +
-                min(v.y[i, j + 1, k], 0) * fr.y[q][i, j + 1, k] -
-                max(v.y[I], 0) * fl.y[q][I] - min(v.y[I], 0) * fr.y[q][I]
-        ) * Δy_ + (
-            max(v.z[i, j, k + 1], 0) * fl.z[q][i, j, k + 1] +
-                min(v.z[i, j, k + 1], 0) * fr.z[q][i, j, k + 1] -
-                max(v.z[I], 0) * fl.z[q][I] - min(v.z[I], 0) * fr.z[q][I]
-        ) * Δz_
-        du[q][I] = @muladd fluxdiv - state[q][I] * d
-    end
-end
-
 @kernel inbounds = true function multiphase_semi_collocated_KA_3D!(
         du, fl, fr, v, Δx_, Δy_, Δz_, ::Val{NP}, g, O
     ) where {NP}
@@ -181,10 +153,11 @@ end
     end
 end
 
+"""Material transport in 3D; see the 2D counterpart for the design rationale."""
 function launch_multiphase_stage_KA_3D!(
-        dest, initial, stage, du, fl, fr, v, divv, boundary, stag,
-        nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, a, b, c, Δt, phase_count, backend,
-        fx, fy, fz, semi, update
+        dest, initial, stage, du, fl, fr, vcell, boundary,
+        nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, a, b, Δt, phase_count, backend,
+        fx, fy, fz, semi, limited_update,
     )
     fx(
         fl.x, fr.x, stage, boundary, nx, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
@@ -199,21 +172,34 @@ function launch_multiphase_stage_KA_3D!(
         ndrange = size(fl.z[1])
     )
     synchronize(backend)
-    if stag
-        semi(
-            du, stage, fl, fr, v, divv, Δx_, Δy_, Δz_, phase_count, nothing, Offset0;
-            ndrange = size(du[1])
-        )
-    else
-        semi(du, fl, fr, v, Δx_, Δy_, Δz_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-    end
+    semi(du, fl, fr, vcell, Δx_, Δy_, Δz_, phase_count, nothing, Offset0; ndrange = size(du[1]))
     synchronize(backend)
-    update(
-        dest, initial, stage, du, a, b, c, Δt, phase_count, nothing, Offset0;
+    limited_update(
+        dest, initial, stage, du, a, b, Δt, phase_count, nothing, Offset0;
         ndrange = size(dest[1])
     )
     synchronize(backend)
     return nothing
+end
+
+"""Interpolate a staggered multiphase velocity to cell centres once per step (3D)."""
+function prepare_multiphase_velocity_KA_3D!(scheme, v, nx, ny, nz, backend)
+    scheme.stag || return v
+    scheme.vcenter === nothing && return v
+    FiniteDiffWENO5.validate_staggered_velocity!(scheme.vcenter, v; periodic = scheme.vperiodic)
+    px, py, pz = scheme.vperiodic.x, scheme.vperiodic.y, scheme.vperiodic.z
+    cx, cy, cz = scheme.vcenter.x, scheme.vcenter.y, scheme.vcenter.z
+    kx = nx >= FiniteDiffWENO5.eno5_minimum_cells(px) ?
+        eno5_face_to_center_KA_3D_x!(backend) : linear_face_to_center_KA_3D_x!(backend)
+    ky = ny >= FiniteDiffWENO5.eno5_minimum_cells(py) ?
+        eno5_face_to_center_KA_3D_y!(backend) : linear_face_to_center_KA_3D_y!(backend)
+    kz = nz >= FiniteDiffWENO5.eno5_minimum_cells(pz) ?
+        eno5_face_to_center_KA_3D_z!(backend) : linear_face_to_center_KA_3D_z!(backend)
+    kx(cx, v.x, nx, px, nothing, Offset0, ndrange = size(cx))
+    ky(cy, v.y, ny, py, nothing, Offset0, ndrange = size(cy))
+    kz(cz, v.z, nz, pz, nothing, Offset0, ndrange = size(cz))
+    synchronize(backend)
+    return (; x = cx, y = cy, z = cz)
 end
 
 if nameof(@__MODULE__) == :KAExt
@@ -234,30 +220,30 @@ if nameof(@__MODULE__) == :KAExt
         @assert get_backend(v.y) == backend
         @assert get_backend(v.z) == backend
 
-        (; fl, fr, ut, du, divv, boundary, stag, χ, γ, ζ, ϵ) = scheme
+        (; fl, fr, ut, du, boundary, χ, γ, ζ, ϵ) = scheme
         nx, ny, nz = size(phases[1])
         Δx_, Δy_, Δz_ = inv(Δx), inv(Δy), inv(Δz)
         phase_count = Val(NP)
+        vcell = prepare_multiphase_velocity_KA_3D!(scheme, v, nx, ny, nz, backend)
         fx = multiphase_WENO_flux_KA_3D_x!(backend)
         fy = multiphase_WENO_flux_KA_3D_y!(backend)
         fz = multiphase_WENO_flux_KA_3D_z!(backend)
-        semi = stag ? multiphase_semi_staggered_KA_3D!(backend) :
-            multiphase_semi_collocated_KA_3D!(backend)
-        update = multiphase_RK_update_KA!(backend)
+        semi = multiphase_semi_collocated_KA_3D!(backend)
+        limited_update = multiphase_RK_limited_update_KA!(backend)
         launch_multiphase_stage_KA_3D!(
-            ut, phases, phases, du, fl, fr, v, divv,
-            boundary, stag, nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, 1.0, 0.0, 1.0, Δt,
-            phase_count, backend, fx, fy, fz, semi, update
+            ut, phases, phases, du, fl, fr, vcell,
+            boundary, nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, 0.0, 1.0, Δt,
+            phase_count, backend, fx, fy, fz, semi, limited_update
         )
         launch_multiphase_stage_KA_3D!(
-            ut, phases, ut, du, fl, fr, v, divv,
-            boundary, stag, nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, 0.75, 0.25, 0.25, Δt,
-            phase_count, backend, fx, fy, fz, semi, update
+            ut, phases, ut, du, fl, fr, vcell,
+            boundary, nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, 0.75, 0.25, Δt,
+            phase_count, backend, fx, fy, fz, semi, limited_update
         )
         launch_multiphase_stage_KA_3D!(
-            phases, phases, ut, du, fl, fr, v, divv,
-            boundary, stag, nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, 1.0 / 3.0,
-            2.0 / 3.0, 2.0 / 3.0, Δt, phase_count, backend, fx, fy, fz, semi, update
+            phases, phases, ut, du, fl, fr, vcell,
+            boundary, nx, ny, nz, χ, γ, ζ, ϵ, Δx_, Δy_, Δz_, 1.0 / 3.0,
+            2.0 / 3.0, Δt, phase_count, backend, fx, fy, fz, semi, limited_update
         )
         return nothing
     end

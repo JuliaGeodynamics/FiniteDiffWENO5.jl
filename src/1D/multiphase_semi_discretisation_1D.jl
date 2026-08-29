@@ -53,47 +53,20 @@ function multiphase_WENO_flux!(state, scheme::MultiphaseWENOScheme{T, NP}, nx) w
     return nothing
 end
 
-"""
-    multiphase_semi_discretisation!(du, state, v, scheme, Δx_)
-
-Material-fraction semi-discretisation in 1D.
-
-For staggered velocity this discretises `∂tϕₖ + ∇·(vϕₖ) = ϕₖ∇·v`, using the *same*
-two-point divergence for the source as the phase-flux sum telescopes into. That is what
-makes the two cancel discretely: with `Σₖ fl[k][i] = Σₖ fr[k][i] = 1`,
-
-    Σₖ fluxdivₖ = (v[i+1] − v[i]) · Δx⁻¹ = divv[i]
-
-so `Σₖ duₖ = 0` exactly. A wider divergence stencil breaks the cancellation.
-
-For collocated velocity the one-sided differences already telescope to zero over the
-phases, so no source is formed and `scheme.divv` is `nothing`.
-"""
-function multiphase_semi_discretisation!(du, state, v, scheme::MultiphaseWENOScheme{T, NP}, Δx_) where {T, NP}
-    (; fl, fr, stag, divv, multithreading) = scheme
-
-    if stag
-        @inbounds @maybe_threads multithreading for i in axes(du[1], 1)
-            d = (v.x[i + 1] - v.x[i]) * Δx_
-            divv[i] = d
-            for k in 1:NP
-                fluxdiv = (
-                    max(v.x[i + 1], 0) * fl.x[k][i + 1] +
-                        min(v.x[i + 1], 0) * fr.x[k][i + 1] -
-                        max(v.x[i], 0) * fl.x[k][i] -
-                        min(v.x[i], 0) * fr.x[k][i]
-                ) * Δx_
-                du[k][i] = @muladd fluxdiv - state[k][i] * d
-            end
-        end
-    else
-        @inbounds @maybe_threads multithreading for i in axes(du[1], 1)
-            for k in 1:NP
-                du[k][i] = @muladd max(v.x[i], 0) * (fl.x[k][i + 1] - fl.x[k][i]) * Δx_ +
-                    min(v.x[i], 0) * (fr.x[k][i + 1] - fr.x[k][i]) * Δx_
-            end
+"""Evaluate the shared-weight multiphase material operator `v ∂ϕₖ/∂x`."""
+function multiphase_material_semi_discretisation!(
+        du, vcenter, scheme::MultiphaseWENOScheme{T, NP}, Δx_
+    ) where {T, NP}
+    (; fl, fr, multithreading) = scheme
+    size(vcenter.x) == size(du[1]) || throw(DimensionMismatch(
+        "prepared x velocity has size $(size(vcenter.x)), expected $(size(du[1]))",
+    ))
+    @inbounds @maybe_threads multithreading for i in eachindex(du[1])
+        v = vcenter.x[i]
+        for k in 1:NP
+            du[k][i] = @muladd max(v, 0) * (fl.x[k][i + 1] - fl.x[k][i]) * Δx_ +
+                min(v, 0) * (fr.x[k][i + 1] - fr.x[k][i]) * Δx_
         end
     end
-
     return nothing
 end

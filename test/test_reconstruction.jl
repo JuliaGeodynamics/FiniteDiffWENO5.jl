@@ -3,7 +3,7 @@
     # --- Constant field: reconstruction should return the same value ---
     @testset "Constant field" begin
         u = fill(3.14, 5)
-        weno = WENOScheme(u)
+        weno = WENOScheme(u; form = :nonconservative, stag = false)
         (; χ, γ, ζ, ϵ) = weno
 
         f_up = FiniteDiffWENO5.weno5_reconstruction_upwind(u..., χ, γ, ζ, ϵ)
@@ -16,7 +16,7 @@
     # --- Linear field: should reconstruct 5th-order accurate interface ---
     @testset "Linear field" begin
         u = [1.0, 2.0, 3.0, 4.0, 5.0]
-        weno = WENOScheme(u)
+        weno = WENOScheme(u; form = :nonconservative, stag = false)
         (; χ, γ, ζ, ϵ) = weno
 
         f_up = FiniteDiffWENO5.weno5_reconstruction_upwind(u..., χ, γ, ζ, ϵ)
@@ -30,7 +30,7 @@
     @testset "Quadratic field" begin
         x = -2:2
         u = float.(x .^ 2)  # smooth convex profile
-        weno = WENOScheme(float(u))
+        weno = WENOScheme(float(u); form = :nonconservative, stag = false)
         (; χ, γ, ζ, ϵ) = weno
 
         fl = (2u[1] - 13u[2] + 47u[3] + 27u[4] - 3u[5]) / 60.0
@@ -46,7 +46,7 @@
     # --- Discontinuous field: should remain non-oscillatory ---
     @testset "Discontinuous field" begin
         u = [1.0, 1.0, 1.0, 10.0, 10.0]
-        weno = WENOScheme(u)
+        weno = WENOScheme(u; form = :nonconservative, stag = false)
         (; χ, γ, ζ, ϵ) = weno
 
         f_up = FiniteDiffWENO5.weno5_reconstruction_upwind(u..., χ, γ, ζ, ϵ)

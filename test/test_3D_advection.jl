@@ -38,7 +38,7 @@
         end
 
         u = copy(u0)
-        weno = WENOScheme(u; boundary = (2, 2, 2, 2, 2, 2), stag = false, multithreading = true)
+        weno = WENOScheme(u; boundary = (2, 2, 2, 2, 2, 2), form = :nonconservative, stag = false, multithreading = true)
 
         Δt = CFL * min(Δx, Δy, Δz)^(5 / 3)
         tmax = period * L / max(maximum(abs.(vx0)), maximum(abs.(vy0)), maximum(abs.(vz0)))
@@ -113,7 +113,7 @@
 
         u = KernelAbstractions.zeros(backend, Float64, nx, ny, nz)
         copyto!(u, u0)
-        weno = WENOScheme(u, backend; boundary = (2, 2, 2, 2, 2, 2), stag = false)
+        weno = WENOScheme(u, backend; boundary = (2, 2, 2, 2, 2, 2), form = :nonconservative, stag = false)
 
         Δt = CFL * min(Δx, Δy, Δz)^(5 / 3)
         tmax = period * Lx / max(maximum(abs.(vx0)), maximum(abs.(vy0)), maximum(abs.(vz0)))
@@ -190,7 +190,7 @@
 
         u = Field(backend, grid, Center())
         set!(u, u0)
-        weno = WENOScheme(u, grid; boundary = (2, 2, 2, 2, 2, 2), stag = false)
+        weno = WENOScheme(u, grid; boundary = (2, 2, 2, 2, 2, 2), form = :nonconservative, stag = false)
 
         Δt = CFL * min(Δx, Δy, Δz)^(5 / 3)
         tmax = period * Lx / max(maximum(abs.(vx0)), maximum(abs.(vy0)), maximum(abs.(vz0)))

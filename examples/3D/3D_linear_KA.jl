@@ -50,7 +50,7 @@ function main(; backend = CPU(), nx = 50, ny = 50, nz = 50)
 
     u = KernelAbstractions.zeros(backend, Float64, nx, ny, nz)
     copyto!(u, u0)
-    weno = WENOScheme(u, backend; boundary = (2, 2, 2, 2, 2, 2), stag = false)
+    weno = WENOScheme(u, backend; form = :nonconservative, boundary = (2, 2, 2, 2, 2, 2), stag = false)
 
     Δt = CFL * min(Δx, Δy, Δz)^(5 / 3)
     tmax = period * Lx / max(maximum(abs.(vx0)), maximum(abs.(vy0)), maximum(abs.(vz0)))

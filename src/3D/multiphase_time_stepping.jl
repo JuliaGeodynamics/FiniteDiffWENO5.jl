@@ -19,30 +19,41 @@ function WENO_step!(
     nx, ny, nz = size(phases[1])
     Δx_, Δy_, Δz_ = inv(Δx), inv(Δy), inv(Δz)
     (; ut, du, multithreading) = scheme
+    voperator = prepare_velocity!(scheme, v)
+    valNP = Val(NP)
 
     multiphase_WENO_flux!(phases, scheme, nx, ny, nz)
-    multiphase_semi_discretisation!(du, phases, v, scheme, Δx_, Δy_, Δz_)
+    multiphase_material_semi_discretisation!(du, voperator, scheme, Δx_, Δy_, Δz_)
     @inbounds @maybe_threads multithreading for I in CartesianIndices(ut[1])
+        initial = ntuple(q -> phases[q][I], valNP)
+        duT = ntuple(q -> du[q][I], valNP)
+        updated = simplex_rk_stage(initial, initial, duT, zero(T), one(T), Δt)
         for q in 1:NP
-            ut[q][I] = @muladd phases[q][I] - Δt * du[q][I]
+            ut[q][I] = updated[q]
         end
     end
 
     multiphase_WENO_flux!(ut, scheme, nx, ny, nz)
-    multiphase_semi_discretisation!(du, ut, v, scheme, Δx_, Δy_, Δz_)
+    multiphase_material_semi_discretisation!(du, voperator, scheme, Δx_, Δy_, Δz_)
     @inbounds @maybe_threads multithreading for I in CartesianIndices(ut[1])
+        initial = ntuple(q -> phases[q][I], valNP)
+        stage = ntuple(q -> ut[q][I], valNP)
+        duT = ntuple(q -> du[q][I], valNP)
+        updated = simplex_rk_stage(initial, stage, duT, T(0.75), T(0.25), Δt)
         for q in 1:NP
-            ut[q][I] = @muladd 0.75 * phases[q][I] + 0.25 * ut[q][I] -
-                0.25 * Δt * du[q][I]
+            ut[q][I] = updated[q]
         end
     end
 
     multiphase_WENO_flux!(ut, scheme, nx, ny, nz)
-    multiphase_semi_discretisation!(du, ut, v, scheme, Δx_, Δy_, Δz_)
+    multiphase_material_semi_discretisation!(du, voperator, scheme, Δx_, Δy_, Δz_)
     @inbounds @maybe_threads multithreading for I in CartesianIndices(phases[1])
+        initial = ntuple(q -> phases[q][I], valNP)
+        stage = ntuple(q -> ut[q][I], valNP)
+        duT = ntuple(q -> du[q][I], valNP)
+        updated = simplex_rk_stage(initial, stage, duT, T(1 / 3), T(2 / 3), Δt)
         for q in 1:NP
-            phases[q][I] = @muladd 1.0 / 3.0 * phases[q][I] +
-                2.0 / 3.0 * ut[q][I] - (2.0 / 3.0) * Δt * du[q][I]
+            phases[q][I] = updated[q]
         end
     end
     return nothing

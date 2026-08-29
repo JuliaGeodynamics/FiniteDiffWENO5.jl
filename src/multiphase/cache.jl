@@ -1,4 +1,4 @@
-@kwdef struct MultiphaseWENOScheme{T, NP, TArray, TFlux, TDiv, TBoundary} <: AbstractWENO
+@kwdef struct MultiphaseWENOScheme{T, NP, TArray, TFlux, TVelocity, TPeriodicity, TBoundary} <: AbstractWENO
     # upwind and downwind constants
     γ::NTuple{3, T} = T.((0.1, 0.6, 0.3))
     # betas' constants
@@ -20,8 +20,10 @@
     du::TArray
     # per-phase temporary array for the time stepping
     ut::TArray
-    # cell-centred velocity divergence; `nothing` on the collocated path
-    divv::TDiv
+    # cell-centred velocity, populated from staggered faces by ENO5 when required
+    vcenter::TVelocity
+    # periodicity of the normal staggered velocity in each direction
+    vperiodic::TPeriodicity
 end
 
 """
@@ -66,7 +68,8 @@ tracers; use this type only for fractions of a whole.
   `NTuple{NP}` of arrays.
 - `du::NTuple{NP}`: per-phase semi-discretisation of the advection term.
 - `ut::NTuple{NP}`: per-phase temporary storage for the Runge-Kutta stages.
-- `divv`: cell-centred velocity divergence when `stag=true`, `nothing` otherwise.
+- `vcenter`: cell-centred velocity, ENO5-interpolated from staggered faces when
+  `stag=true`; `nothing` on the collocated path.
 """
 function MultiphaseWENOScheme(
         phases::Tuple{Vararg{Any, NP}};
@@ -152,12 +155,16 @@ function MultiphaseWENOScheme(
     du = ntuple(_ -> zeros_like(sizes), valNP)
     ut = ntuple(_ -> zeros_like(sizes), valNP)
 
-    # the collocated form telescopes to zero without a source, so no divergence is needed
-    divv = stag ? zeros_like(sizes) : nothing
+    # Material transport needs no divergence source. The collocated path passes its
+    # supplied velocity straight through (see `prepare_velocity!`), so it needs no
+    # buffer at all; only the staggered path needs somewhere to put the ENO5-prepared
+    # cell-centred velocity.
+    vcenter = stag ? NamedTuple{labels}(ntuple(_ -> zeros_like(sizes), Val(N))) : nothing
+    vperiodic = stag ? velocity_periodicity(boundary, labels) : nothing
 
-    return MultiphaseWENOScheme{T, NP, typeof(du), typeof(fl), typeof(divv), typeof(boundary)}(
+    return MultiphaseWENOScheme{T, NP, typeof(du), typeof(fl), typeof(vcenter), typeof(vperiodic), typeof(boundary)}(
         stag = stag, boundary = boundary, multithreading = multithreading,
-        fl = fl, fr = fr, du = du, ut = ut, divv = divv,
+        fl = fl, fr = fr, du = du, ut = ut, vcenter = vcenter, vperiodic = vperiodic,
     )
 end
 

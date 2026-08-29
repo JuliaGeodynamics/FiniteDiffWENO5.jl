@@ -54,3 +54,25 @@ Convenience wrapper computing the shared coefficient and applying it in one call
 @inline function limit_simplex(high::Tuple{T, Vararg{T, M}}, donor::Tuple{T, Vararg{T, M}}) where {T, M}
     return limit_simplex(high, donor, simplex_limiter_coefficient(high, donor))
 end
+
+"""
+    simplex_rk_stage(initial, stage, du, a, b, Δt)
+
+One SSP-RK3 sub-stage for a phase vector already on the simplex: `stage` is limited
+toward the forward-Euler candidate exactly as `limit_simplex` does for a face state
+(`stage` playing the role of `donor`, the candidate playing the role of `high`), then
+the SSP convex combination `a*initial + b*limited` is taken.
+
+This is the single place the RK-stage limiter formula is computed; every dimension's
+`WENO_step!` (CPU and, via the mirrored GPU kernel, KA/Chmy) calls this instead of
+re-deriving `θ` by hand at each stage, so the `clamp` in `simplex_limiter_coefficient`
+protects every call site rather than only the ones that remembered to include it.
+"""
+@inline function simplex_rk_stage(
+        initial::Tuple{T, Vararg{T, M}}, stage::Tuple{T, Vararg{T, M}},
+        du::Tuple{T, Vararg{T, M}}, a, b, Δt,
+    ) where {T, M}
+    candidate = ntuple(k -> (@muladd stage[k] - Δt * du[k]), Val(M + 1))
+    limited = limit_simplex(candidate, stage)
+    return ntuple(k -> (@muladd a * initial[k] + b * limited[k]), Val(M + 1))
+end

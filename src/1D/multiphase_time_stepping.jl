@@ -37,32 +37,44 @@ function WENO_step!(
     Δx_ = inv(Δx)
 
     (; ut, du, multithreading) = scheme
+    voperator = prepare_velocity!(scheme, v)
+    valNP = Val(NP)
 
     # stage 1
     multiphase_WENO_flux!(phases, scheme, nx)
-    multiphase_semi_discretisation!(du, phases, v, scheme, Δx_)
+    multiphase_material_semi_discretisation!(du, voperator, scheme, Δx_)
     @inbounds @maybe_threads multithreading for i in axes(ut[1], 1)
+        initial = ntuple(k -> phases[k][i], valNP)
+        duT = ntuple(k -> du[k][i], valNP)
+        updated = simplex_rk_stage(initial, initial, duT, zero(T), one(T), Δt)
         for k in 1:NP
-            ut[k][i] = @muladd phases[k][i] - Δt * du[k][i]
+            ut[k][i] = updated[k]
         end
     end
 
     # stage 2
     multiphase_WENO_flux!(ut, scheme, nx)
-    multiphase_semi_discretisation!(du, ut, v, scheme, Δx_)
+    multiphase_material_semi_discretisation!(du, voperator, scheme, Δx_)
     @inbounds @maybe_threads multithreading for i in axes(ut[1], 1)
+        initial = ntuple(k -> phases[k][i], valNP)
+        stage = ntuple(k -> ut[k][i], valNP)
+        duT = ntuple(k -> du[k][i], valNP)
+        updated = simplex_rk_stage(initial, stage, duT, T(0.75), T(0.25), Δt)
         for k in 1:NP
-            ut[k][i] = @muladd 0.75 * phases[k][i] + 0.25 * ut[k][i] - 0.25 * Δt * du[k][i]
+            ut[k][i] = updated[k]
         end
     end
 
     # stage 3
     multiphase_WENO_flux!(ut, scheme, nx)
-    multiphase_semi_discretisation!(du, ut, v, scheme, Δx_)
+    multiphase_material_semi_discretisation!(du, voperator, scheme, Δx_)
     @inbounds @maybe_threads multithreading for i in axes(phases[1], 1)
+        initial = ntuple(k -> phases[k][i], valNP)
+        stage = ntuple(k -> ut[k][i], valNP)
+        duT = ntuple(k -> du[k][i], valNP)
+        updated = simplex_rk_stage(initial, stage, duT, T(1 / 3), T(2 / 3), Δt)
         for k in 1:NP
-            phases[k][i] = @muladd 1.0 / 3.0 * phases[k][i] + 2.0 / 3.0 * ut[k][i] -
-                (2.0 / 3.0) * Δt * du[k][i]
+            phases[k][i] = updated[k]
         end
     end
 

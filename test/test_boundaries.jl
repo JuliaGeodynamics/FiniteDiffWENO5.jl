@@ -3,7 +3,16 @@ using FiniteDiffWENO5
 
 @testset "typed advection boundary conditions" begin
     @testset "construction and validation" begin
-        weno = WENOScheme(zeros(8))
+        @test FiniteDiffWENO5.is_conservative(FiniteDiffWENO5.ConservativeForm())
+        @test !FiniteDiffWENO5.is_conservative(FiniteDiffWENO5.NonConservativeForm())
+        @test FiniteDiffWENO5.velocity_periodicity(
+            (PeriodicBC(), PeriodicBC()), (:x,),
+        ) == (; x = true)
+        @test_throws ArgumentError FiniteDiffWENO5.velocity_periodicity(
+            (PeriodicBC(), ExtrapolateBC()), (:x,),
+        )
+
+        weno = WENOScheme(zeros(8); form = :nonconservative, stag = false)
         @test weno.boundary == (ExtrapolateBC(), ExtrapolateBC())
 
         bc = AdvectionBC(
@@ -12,15 +21,15 @@ using FiniteDiffWENO5
             bot = PeriodicBC(),
             top = PeriodicBC(),
         )
-        weno2 = WENOScheme(zeros(6, 5); boundary = bc, stag = true)
+        weno2 = WENOScheme(zeros(6, 5); boundary = bc, form = :conservative, stag = true)
         @test weno2.boundary == (
             PrescribedInflowBC(3.0), ExtrapolateBC(), PeriodicBC(), PeriodicBC(),
         )
 
-        # Legacy integer codes remain accepted for existing callers.
-        @test WENOScheme(zeros(8); boundary = (2, 2)).boundary ==
+        # Legacy integer boundary codes remain accepted.
+        @test WENOScheme(zeros(8); boundary = (2, 2), form = :nonconservative, stag = false).boundary ==
             (PeriodicBC(), PeriodicBC())
-        @test WENOScheme(zeros(8); boundary = (0, 1)).boundary ==
+        @test WENOScheme(zeros(8); boundary = (0, 1), form = :nonconservative, stag = false).boundary ==
             (ExtrapolateBC(), ExtrapolateBC())
 
         @test_throws DimensionMismatch WENOScheme(
@@ -29,6 +38,8 @@ using FiniteDiffWENO5
                 PrescribedInflowBC(ones(4)), ExtrapolateBC(),
                 ExtrapolateBC(), ExtrapolateBC(),
             ),
+            form = :nonconservative,
+            stag = false,
         )
         @test_throws ArgumentError WENOScheme(
             zeros(6, 5);
@@ -36,12 +47,27 @@ using FiniteDiffWENO5
                 PrescribedInflowBC([1.0, NaN, 1.0, 1.0, 1.0]),
                 ExtrapolateBC(), ExtrapolateBC(), ExtrapolateBC(),
             ),
+            form = :nonconservative,
+            stag = false,
         )
         @test_throws ArgumentError WENOScheme(
             zeros(8);
             boundary = (PrescribedInflowBC(1.0), ExtrapolateBC()),
+            form = :nonconservative,
+            stag = false,
             upwind_mode = true,
         )
+
+        # The conservative split-flux path has no bound-preserving limiter yet;
+        # lim_ZS=true would silently do nothing there, so it is rejected outright,
+        # An explicit form is required; the former stag=true default is gone.
+        @test_throws ArgumentError WENOScheme(
+            zeros(8); form = :conservative, stag = true, lim_ZS = true,
+        )
+        @test_throws UndefKeywordError WENOScheme(zeros(8); stag = true, lim_ZS = true)
+        @test WENOScheme(
+            zeros(8); form = :nonconservative, stag = true, lim_ZS = true,
+        ) isa WENOScheme
     end
 
     @testset "1D inflow is sign-aware" begin
@@ -53,12 +79,16 @@ using FiniteDiffWENO5
         weno = WENOScheme(
             u;
             boundary = (PrescribedInflowBC(2.0), ExtrapolateBC()),
+            form = :conservative,
             stag = true,
             multithreading = false,
         )
         WENO_step!(u, velocity, weno, 0.1dx, dx)
         @test u[1] > 0
-        @test weno.fl.x[1] == 2.0
+        # On the conservative path `fl`/`fr` hold split point fluxes f± = ½(vu ± αu),
+        # not transported states, so the meaningful boundary invariant is that the
+        # numerical flux entering the west face equals v·u_ghost.
+        @test weno.fl.x[1] + weno.fr.x[1] ≈ 1.0 * 2.0 rtol = 0 atol = 8eps(Float64)
 
         # The west value is ignored when the west face is outflow.
         fill!(u, 1.0)
@@ -66,6 +96,7 @@ using FiniteDiffWENO5
         weno = WENOScheme(
             u;
             boundary = (PrescribedInflowBC(99.0), ExtrapolateBC()),
+            form = :conservative,
             stag = true,
             multithreading = false,
         )
@@ -77,12 +108,15 @@ using FiniteDiffWENO5
         weno = WENOScheme(
             u;
             boundary = (ExtrapolateBC(), PrescribedInflowBC(4.0)),
+            form = :conservative,
             stag = true,
             multithreading = false,
         )
         WENO_step!(u, velocity, weno, 0.1dx, dx)
         @test u[end] > 0
-        @test weno.fr.x[end] == 4.0
+        # Same flux semantics at the east face, where v = -1 makes the inward
+        # numerical flux negative: v·u_ghost = -1 * 4.
+        @test weno.fl.x[end] + weno.fr.x[end] ≈ -1.0 * 4.0 rtol = 0 atol = 8eps(Float64)
     end
 
     @testset "2D face profiles" begin
@@ -97,6 +131,11 @@ using FiniteDiffWENO5
                 PrescribedInflowBC(west_temperature), ExtrapolateBC(),
                 ExtrapolateBC(), ExtrapolateBC(),
             ),
+            # These exercise inflow *state* plumbing (per-face profiles landing on
+            # the right faces), which is the non-conservative path's representation.
+            # The conservative path stores split fluxes instead and is covered by
+            # test_conservative_scalar.jl.
+            form = :nonconservative,
             stag = true,
             multithreading = false,
         )
@@ -117,6 +156,11 @@ using FiniteDiffWENO5
                 PrescribedInflowBC(bot_temperature),
                 PrescribedInflowBC(top_temperature),
             ),
+            # These exercise inflow *state* plumbing (per-face profiles landing on
+            # the right faces), which is the non-conservative path's representation.
+            # The conservative path stores split fluxes instead and is covered by
+            # test_conservative_scalar.jl.
+            form = :nonconservative,
             stag = true,
             multithreading = false,
         )
@@ -148,6 +192,11 @@ using FiniteDiffWENO5
                 PrescribedInflowBC(ylo), PrescribedInflowBC(yhi),
                 PrescribedInflowBC(zlo), PrescribedInflowBC(zhi),
             ),
+            # These exercise inflow *state* plumbing (per-face profiles landing on
+            # the right faces), which is the non-conservative path's representation.
+            # The conservative path stores split fluxes instead and is covered by
+            # test_conservative_scalar.jl.
+            form = :nonconservative,
             stag = true,
             multithreading = false,
         )
@@ -173,6 +222,7 @@ using FiniteDiffWENO5
                     PrescribedInflowBC(300.0), ExtrapolateBC(),
                     ExtrapolateBC(), ExtrapolateBC(),
                 ),
+                form = :nonconservative,
                 stag = true,
                 multithreading = false,
             )

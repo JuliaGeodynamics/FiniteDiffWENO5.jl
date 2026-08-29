@@ -84,7 +84,7 @@ end
     end
 end
 
-@kernel function WENO_semi_discretisation_weno5_KA_2D!(du, fl, fr, v, stag, Δx_, Δy_, g, O)
+@kernel function WENO_semi_discretisation_weno5_KA_2D!(du, fl, fr, v, Δx_, Δy_, g, O)
 
     I = @index(Global, Cartesian)
     I = I + O
@@ -93,23 +93,10 @@ end
     m, n = size(du)
 
     if 1 <= i <= m && 1 <= j <= n
-        if stag
-            du[I] = @muladd (
-                max(v.x[i + 1, j], 0) * fl.x[i + 1, j] +
-                    min(v.x[i + 1, j], 0) * fr.x[i + 1, j] -
-                    max(v.x[I], 0) * fl.x[I] -
-                    min(v.x[I], 0) * fr.x[I]
-            ) * Δx_ +
-                (
-                max(v.y[i, j + 1], 0) * fl.y[i, j + 1] +
-                    min(v.y[i, j + 1], 0) * fr.y[i, j + 1] -
-                    max(v.y[I], 0) * fl.y[I] -
-                    min(v.y[I], 0) * fr.y[I]
-            ) * Δy_
-        else
-            du[I] = @muladd max(v.x[I], 0) * (fl.x[i + 1, j] - fl.x[I]) * Δx_ + min(v.x[I], 0) * (fr.x[i + 1, j] - fr.x[I]) * Δx_ +
-                max(v.y[I], 0) * (fl.y[i, j + 1] - fl.y[I]) * Δy_ + min(v.y[I], 0) * (fr.y[i, j + 1] - fr.y[I]) * Δy_
-        end
+        du[I] = @muladd max(v.x[I], 0) * (fl.x[i + 1, j] - fl.x[I]) * Δx_ +
+            min(v.x[I], 0) * (fr.x[i + 1, j] - fr.x[I]) * Δx_ +
+            max(v.y[I], 0) * (fl.y[i, j + 1] - fl.y[I]) * Δy_ +
+            min(v.y[I], 0) * (fr.y[i, j + 1] - fr.y[I]) * Δy_
     end
 end
 
@@ -152,4 +139,155 @@ end
             ) * Δy_
         )
     end
+end
+
+# ENO5 face-to-centre interpolation for one velocity component along its own
+# staggered direction, matching `eno5_face_to_center_direction!` on the CPU.
+@kernel inbounds = true function eno5_face_to_center_KA_2D_x!(center, face, nx, periodic, g, O)
+    I = @index(Global, NTuple)
+    I = I + O
+    i, j = I[1], I[2]
+    n, m = size(center)
+    if 1 <= i <= n && 1 <= j <= m
+        s = FiniteDiffWENO5.eno5_stencil_start(face, CartesianIndex(i, j), 1, i, nx, periodic)
+        row = FiniteDiffWENO5.eno5_row(s, i)
+        value = zero(eltype(face))
+        for r in 0:4
+            value += row[r + 1] * FiniteDiffWENO5.eno5_face_sample(face, CartesianIndex(i, j), 1, s + r, nx, periodic)
+        end
+        center[i, j] = value / oftype(value, 128)
+    end
+end
+
+@kernel inbounds = true function eno5_face_to_center_KA_2D_y!(center, face, ny, periodic, g, O)
+    I = @index(Global, NTuple)
+    I = I + O
+    i, j = I[1], I[2]
+    n, m = size(center)
+    if 1 <= i <= n && 1 <= j <= m
+        s = FiniteDiffWENO5.eno5_stencil_start(face, CartesianIndex(i, j), 2, j, ny, periodic)
+        row = FiniteDiffWENO5.eno5_row(s, j)
+        value = zero(eltype(face))
+        for r in 0:4
+            value += row[r + 1] * FiniteDiffWENO5.eno5_face_sample(face, CartesianIndex(i, j), 2, s + r, ny, periodic)
+        end
+        center[i, j] = value / oftype(value, 128)
+    end
+end
+
+@kernel inbounds = true function linear_face_to_center_KA_2D_x!(center, face, nx, periodic, g, O)
+    I = @index(Global, NTuple)
+    I = I + O
+    i, j = I[1], I[2]
+    n, m = size(center)
+    if 1 <= i <= n && 1 <= j <= m
+        lo = FiniteDiffWENO5.eno5_face_sample(face, CartesianIndex(i, j), 1, i, nx, periodic)
+        hi = FiniteDiffWENO5.eno5_face_sample(face, CartesianIndex(i, j), 1, i + 1, nx, periodic)
+        center[i, j] = 0.5 * (lo + hi)
+    end
+end
+
+@kernel inbounds = true function linear_face_to_center_KA_2D_y!(center, face, ny, periodic, g, O)
+    I = @index(Global, NTuple)
+    I = I + O
+    i, j = I[1], I[2]
+    n, m = size(center)
+    if 1 <= i <= n && 1 <= j <= m
+        lo = FiniteDiffWENO5.eno5_face_sample(face, CartesianIndex(i, j), 2, j, ny, periodic)
+        hi = FiniteDiffWENO5.eno5_face_sample(face, CartesianIndex(i, j), 2, j + 1, ny, periodic)
+        center[i, j] = 0.5 * (lo + hi)
+    end
+end
+
+# Conservative split-flux reconstruction along x and y independently, matching
+# `conservative_semi_discretisation_weno5!` in 2D.
+@kernel inbounds = true function WENO_conservative_flux_KA_2D_x!(fl, fr, u, v, α, boundary, nx, χ, γ, ζ, ϵ, g, O)
+    I = @index(Global, NTuple)
+    I = I + O
+    i, j = I[1], I[2]
+    bL, bR = boundary[1], boundary[2]
+    iwww = left_index(i, 3, nx, bL); iww = left_index(i, 2, nx, bL); iw = left_index(i, 1, nx, bL)
+    ie = right_index(i, 0, nx, bR); iee = right_index(i, 1, nx, bR); ieee = right_index(i, 2, nx, bR)
+    fl[i, j] = weno5_reconstruction_upwind(
+        FiniteDiffWENO5.lf_split_plus(u[iwww, j], v[iwww, j], α),
+        FiniteDiffWENO5.lf_split_plus(u[iww, j], v[iww, j], α),
+        FiniteDiffWENO5.lf_split_plus(u[iw, j], v[iw, j], α),
+        FiniteDiffWENO5.lf_split_plus(u[ie, j], v[ie, j], α),
+        FiniteDiffWENO5.lf_split_plus(u[iee, j], v[iee, j], α), χ, γ, ζ, ϵ,
+    )
+    fr[i, j] = weno5_reconstruction_downwind(
+        FiniteDiffWENO5.lf_split_minus(u[iww, j], v[iww, j], α),
+        FiniteDiffWENO5.lf_split_minus(u[iw, j], v[iw, j], α),
+        FiniteDiffWENO5.lf_split_minus(u[ie, j], v[ie, j], α),
+        FiniteDiffWENO5.lf_split_minus(u[iee, j], v[iee, j], α),
+        FiniteDiffWENO5.lf_split_minus(u[ieee, j], v[ieee, j], α), χ, γ, ζ, ϵ,
+    )
+
+    if i == 1 && bL isa FiniteDiffWENO5.PrescribedInflowBC
+        fl[i, j] = FiniteDiffWENO5.lf_split_plus(FiniteDiffWENO5.inflow_value(bL, j), v[begin, j], α)
+        fr[i, j] = FiniteDiffWENO5.lf_split_minus(u[begin, j], v[begin, j], α)
+    end
+    if i == nx + 1 && bR isa FiniteDiffWENO5.PrescribedInflowBC
+        fl[i, j] = FiniteDiffWENO5.lf_split_plus(u[end, j], v[end, j], α)
+        fr[i, j] = FiniteDiffWENO5.lf_split_minus(FiniteDiffWENO5.inflow_value(bR, j), v[end, j], α)
+    end
+end
+
+@kernel inbounds = true function WENO_conservative_flux_KA_2D_y!(fl, fr, u, v, α, boundary, ny, χ, γ, ζ, ϵ, g, O)
+    I = @index(Global, NTuple)
+    I = I + O
+    i, j = I[1], I[2]
+    bL, bR = boundary[3], boundary[4]
+    jwww = left_index(j, 3, ny, bL); jww = left_index(j, 2, ny, bL); jw = left_index(j, 1, ny, bL)
+    je = right_index(j, 0, ny, bR); jee = right_index(j, 1, ny, bR); jeee = right_index(j, 2, ny, bR)
+    fl[i, j] = weno5_reconstruction_upwind(
+        FiniteDiffWENO5.lf_split_plus(u[i, jwww], v[i, jwww], α),
+        FiniteDiffWENO5.lf_split_plus(u[i, jww], v[i, jww], α),
+        FiniteDiffWENO5.lf_split_plus(u[i, jw], v[i, jw], α),
+        FiniteDiffWENO5.lf_split_plus(u[i, je], v[i, je], α),
+        FiniteDiffWENO5.lf_split_plus(u[i, jee], v[i, jee], α), χ, γ, ζ, ϵ,
+    )
+    fr[i, j] = weno5_reconstruction_downwind(
+        FiniteDiffWENO5.lf_split_minus(u[i, jww], v[i, jww], α),
+        FiniteDiffWENO5.lf_split_minus(u[i, jw], v[i, jw], α),
+        FiniteDiffWENO5.lf_split_minus(u[i, je], v[i, je], α),
+        FiniteDiffWENO5.lf_split_minus(u[i, jee], v[i, jee], α),
+        FiniteDiffWENO5.lf_split_minus(u[i, jeee], v[i, jeee], α), χ, γ, ζ, ϵ,
+    )
+
+    if j == 1 && bL isa FiniteDiffWENO5.PrescribedInflowBC
+        fl[i, j] = FiniteDiffWENO5.lf_split_plus(FiniteDiffWENO5.inflow_value(bL, i), v[i, begin], α)
+        fr[i, j] = FiniteDiffWENO5.lf_split_minus(u[i, begin], v[i, begin], α)
+    end
+    if j == ny + 1 && bR isa FiniteDiffWENO5.PrescribedInflowBC
+        fl[i, j] = FiniteDiffWENO5.lf_split_plus(u[i, end], v[i, end], α)
+        fr[i, j] = FiniteDiffWENO5.lf_split_minus(FiniteDiffWENO5.inflow_value(bR, i), v[i, end], α)
+    end
+end
+
+@kernel inbounds = true function WENO_conservative_divergence_KA_2D!(du, fl, fr, Δx_, Δy_, g, O)
+    I = @index(Global, Cartesian)
+    I = I + O
+    i, j = I[1], I[2]
+    du[I] = @muladd ((fl.x[i + 1, j] + fr.x[i + 1, j]) - (fl.x[I] + fr.x[I])) * Δx_ +
+        ((fl.y[i, j + 1] + fr.y[i, j + 1]) - (fl.y[I] + fr.y[I])) * Δy_
+end
+
+"""Device counterpart of `prepare_velocity!` in 2D."""
+function prepare_velocity_KA_2D!(weno, v, nx, ny, backend)
+    weno.stag || return v
+    weno.vcenter === nothing && return v
+
+    px, py = weno.vperiodic.x, weno.vperiodic.y
+    FiniteDiffWENO5.validate_staggered_velocity!(weno.vcenter, v; periodic = weno.vperiodic)
+
+    cx, cy = weno.vcenter.x, weno.vcenter.y
+    kx = nx >= FiniteDiffWENO5.eno5_minimum_cells(px) ?
+        eno5_face_to_center_KA_2D_x!(backend) : linear_face_to_center_KA_2D_x!(backend)
+    ky = ny >= FiniteDiffWENO5.eno5_minimum_cells(py) ?
+        eno5_face_to_center_KA_2D_y!(backend) : linear_face_to_center_KA_2D_y!(backend)
+    kx(cx, v.x, nx, px, nothing, Offset0, ndrange = size(cx))
+    ky(cy, v.y, ny, py, nothing, Offset0, ndrange = size(cy))
+    synchronize(backend)
+    return (; x = cx, y = cy)
 end

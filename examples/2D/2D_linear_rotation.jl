@@ -34,7 +34,7 @@ function main(; nx = 400, ny = 400)
     end
 
     u = copy(u0)
-    weno = WENOScheme(u; boundary = (2, 2, 2, 2), stag = false, multithreading = true)
+    weno = WENOScheme(u; form = :nonconservative, boundary = (2, 2, 2, 2), stag = false, multithreading = true)
 
 
     # grid size

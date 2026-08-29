@@ -1,6 +1,6 @@
 abstract type AbstractWENO end
 
-@kwdef struct WENOScheme{T, TArray, TFlux, TBoundary} <: AbstractWENO
+@kwdef struct WENOScheme{T, TArray, TFlux, TVelocity, TPeriodicity, TForm, TBoundary} <: AbstractWENO
     # upwind and downwind constants
     γ::NTuple{3, T} = T.((0.1, 0.6, 0.3))
     # betas' constants
@@ -11,6 +11,8 @@ abstract type AbstractWENO end
     ϵ::T = eps(T)
     # staggered grid or not (velocities on cell faces or cell centers)
     stag::Bool
+    # selected PDE form
+    form::TForm
     # use Zhang-Shu limiter
     lim_ZS::Bool
     # boundary conditions
@@ -26,10 +28,14 @@ abstract type AbstractWENO end
     du::TArray
     # temporary array for the time stepping
     ut::TArray
+    # prepared cell-centred velocity, used by staggered material transport
+    vcenter::TVelocity
+    # paired-periodic flag per velocity direction, cached with the scheme
+    vperiodic::TPeriodicity
 end
 
 """
-    WENOScheme(c0::AbstractArray{T, N}; boundary=nothing, stag=false,
+    WENOScheme(c0::AbstractArray{T, N}; form::Symbol, boundary=nothing, stag=false,
                multithreading=true, lim_ZS=false, upwind_mode=false) where {T, N}
 
 Structure containing the Weighted Essentially Non-Oscillatory (WENO) scheme of order 5 constants and arrays for N-dimensional data of type T. The formulation is from Borges et al. 2008.
@@ -41,6 +47,8 @@ Structure containing the Weighted Essentially Non-Oscillatory (WENO) scheme of o
   `ExtrapolateBC()` on every face. Legacy integer tuples remain accepted: `0`
   and `1` map to `ExtrapolateBC()`, and `2` maps to `PeriodicBC()`.
 - `stag::Bool`: Whether the grid is staggered (velocities on cell faces) or not (velocities on cell centers). Default to false.
+- `form::Symbol`: Required scalar PDE form: `:conservative` for
+  `∂u/∂t + ∇·(v u) = 0`, or `:nonconservative` for `∂u/∂t + v·∇u = 0`.
 - `lim_ZS::Bool`: Whether to use the Zhang-Shu (2010) limiter. Default to false.
 - `multithreading::Bool`: Whether to use multithreading (only for 2D and 3D). Default to true.
 - `upwind_mode::Bool`: Whether to use a simple upwind scheme for debugging purposes. Default to false.
@@ -59,7 +67,9 @@ Structure containing the Weighted Essentially Non-Oscillatory (WENO) scheme of o
 - `du::AbstractArray{T, N}`: Semi-discretisation of the advection term.
 - `ut::AbstractArray{T, N}`: Temporary array for intermediate calculations using Runge-Kutta.
 """
-function WENOScheme(c0::AbstractArray{T, N}; boundary = nothing, stag::Bool = false, lim_ZS::Bool = false, multithreading::Bool = true, upwind_mode::Bool = false) where {T, N}
+function WENOScheme(c0::AbstractArray{T, N}; boundary = nothing, form::Symbol,
+                    stag::Bool = false, lim_ZS::Bool = false, multithreading::Bool = true,
+                    upwind_mode::Bool = false) where {T, N}
 
     boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))
     boundary = validate_boundary(boundary, N, size(c0))
@@ -73,6 +83,8 @@ function WENOScheme(c0::AbstractArray{T, N}; boundary = nothing, stag::Bool = fa
     # dimension labels
     labels = (:x, :y, :z)[1:min(N, 3)]
     sizes = size(c0)
+    form_tag = advection_form(form)
+    validate_scalar_options(form_tag, stag, lim_ZS, upwind_mode)
 
     # allocate a zeroed buffer of the same array type as `c0`
     zeros_like(dims) = fill!(similar(c0, T, dims), zero(T))
@@ -87,8 +99,18 @@ function WENOScheme(c0::AbstractArray{T, N}; boundary = nothing, stag::Bool = fa
     # temporary array for Runge-Kutta
     ut = zeros_like(sizes)
 
+    # Both staggered forms (conservative split-flux and non-conservative material
+    # transport) need velocity prepared to cell centres once per step; the collocated
+    # path passes its supplied velocity straight through and needs no buffer.
+    vcenter = stag ? NamedTuple{labels}(ntuple(_ -> zeros_like(sizes), min(N, 3))) : nothing
+    vperiodic = stag ? velocity_periodicity(boundary, labels) : nothing
+
     TFlux = typeof(fl)
     TArray = typeof(du)
 
-    return WENOScheme{T, TArray, TFlux, typeof(boundary)}(stag = stag, boundary = boundary, lim_ZS = lim_ZS, multithreading = multithreading, upwind_mode = upwind_mode, fl = fl, fr = fr, du = du, ut = ut)
+    return WENOScheme{T, TArray, TFlux, typeof(vcenter), typeof(vperiodic), typeof(form_tag), typeof(boundary)}(
+        stag = stag, form = form_tag, boundary = boundary, lim_ZS = lim_ZS,
+        multithreading = multithreading, upwind_mode = upwind_mode, fl = fl, fr = fr,
+        du = du, ut = ut, vcenter = vcenter, vperiodic = vperiodic,
+    )
 end

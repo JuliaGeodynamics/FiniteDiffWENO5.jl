@@ -97,46 +97,23 @@ function multiphase_WENO_flux!(state, scheme::MultiphaseWENOScheme{T, NP}, nx, n
     return nothing
 end
 
-function multiphase_semi_discretisation!(
-        du, state, v, scheme::MultiphaseWENOScheme{T, NP}, Δx_, Δy_, Δz_
+"""Evaluate the shared-weight multiphase material operator in three dimensions."""
+function multiphase_material_semi_discretisation!(
+        du, vcenter, scheme::MultiphaseWENOScheme{T, NP}, Δx_, Δy_, Δz_
     ) where {T, NP}
-    (; fl, fr, stag, divv, multithreading) = scheme
-    if stag
-        @inbounds @maybe_threads multithreading for I in CartesianIndices(du[1])
-            i, j, k = Tuple(I)
-            d = @muladd (v.x[i + 1, j, k] - v.x[i, j, k]) * Δx_ +
-                (v.y[i, j + 1, k] - v.y[i, j, k]) * Δy_ +
-                (v.z[i, j, k + 1] - v.z[i, j, k]) * Δz_
-            divv[I] = d
-            for q in 1:NP
-                fluxdiv = @muladd (
-                    max(v.x[i + 1, j, k], 0) * fl.x[q][i + 1, j, k] +
-                        min(v.x[i + 1, j, k], 0) * fr.x[q][i + 1, j, k] -
-                        max(v.x[I], 0) * fl.x[q][I] - min(v.x[I], 0) * fr.x[q][I]
-                ) * Δx_ + (
-                    max(v.y[i, j + 1, k], 0) * fl.y[q][i, j + 1, k] +
-                        min(v.y[i, j + 1, k], 0) * fr.y[q][i, j + 1, k] -
-                        max(v.y[I], 0) * fl.y[q][I] - min(v.y[I], 0) * fr.y[q][I]
-                ) * Δy_ + (
-                    max(v.z[i, j, k + 1], 0) * fl.z[q][i, j, k + 1] +
-                        min(v.z[i, j, k + 1], 0) * fr.z[q][i, j, k + 1] -
-                        max(v.z[I], 0) * fl.z[q][I] - min(v.z[I], 0) * fr.z[q][I]
-                ) * Δz_
-                du[q][I] = @muladd fluxdiv - state[q][I] * d
-            end
-        end
-    else
-        @inbounds @maybe_threads multithreading for I in CartesianIndices(du[1])
-            i, j, k = Tuple(I)
-            for q in 1:NP
-                du[q][I] = @muladd max(v.x[I], 0) *
-                    (fl.x[q][i + 1, j, k] - fl.x[q][I]) * Δx_ +
-                    min(v.x[I], 0) * (fr.x[q][i + 1, j, k] - fr.x[q][I]) * Δx_ +
-                    max(v.y[I], 0) * (fl.y[q][i, j + 1, k] - fl.y[q][I]) * Δy_ +
-                    min(v.y[I], 0) * (fr.y[q][i, j + 1, k] - fr.y[q][I]) * Δy_ +
-                    max(v.z[I], 0) * (fl.z[q][i, j, k + 1] - fl.z[q][I]) * Δz_ +
-                    min(v.z[I], 0) * (fr.z[q][i, j, k + 1] - fr.z[q][I]) * Δz_
-            end
+    (; fl, fr, multithreading) = scheme
+    size(vcenter.x) == size(du[1]) == size(vcenter.y) == size(vcenter.z) ||
+        throw(DimensionMismatch("prepared velocity components must be collocated with the phases"))
+    @inbounds @maybe_threads multithreading for I in CartesianIndices(du[1])
+        i, j, k = Tuple(I)
+        vx, vy, vz = vcenter.x[I], vcenter.y[I], vcenter.z[I]
+        for q in 1:NP
+            du[q][I] = @muladd max(vx, 0) * (fl.x[q][i + 1, j, k] - fl.x[q][I]) * Δx_ +
+                min(vx, 0) * (fr.x[q][i + 1, j, k] - fr.x[q][I]) * Δx_ +
+                max(vy, 0) * (fl.y[q][i, j + 1, k] - fl.y[q][I]) * Δy_ +
+                min(vy, 0) * (fr.y[q][i, j + 1, k] - fr.y[q][I]) * Δy_ +
+                max(vz, 0) * (fl.z[q][i, j, k + 1] - fl.z[q][I]) * Δz_ +
+                min(vz, 0) * (fr.z[q][i, j, k + 1] - fr.z[q][I]) * Δz_
         end
     end
     return nothing

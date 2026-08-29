@@ -60,6 +60,48 @@ function semi_discretisation_weno5!(du::T, v, weno::WENOScheme, Δx_) where {T <
     return nothing
 end
 
+"""
+    scalar_operator_1D!(du, state, vcell, weno, nx, Δx_, u_min, u_max)
+
+Evaluate one spatial operator for `state`, selected by `weno.form` rather than by
+the velocity layout. `vcell` is already collocated with `state`.
+
+The two branches need different face quantities, so each builds its own: the
+material form reconstructs the transported state `u`, while the conservative form
+reconstructs the split point fluxes `f± = ½(vu ± αu)` directly into the same
+`fl`/`fr` buffers.
+"""
+@inline function scalar_operator_1D!(du, state, vcell, weno::WENOScheme, nx, Δx_, u_min, u_max, α)
+    if !is_conservative(weno.form)
+        WENO_flux!(weno.fl, weno.fr, state, weno, nx, u_min, u_max)
+        material_semi_discretisation_weno5!(du, vcell, weno, Δx_)
+    else
+        conservative_semi_discretisation_weno5!(du, state, vcell, weno, nx, Δx_, α)
+    end
+    return nothing
+end
+
+"""
+    material_semi_discretisation_weno5!(du, vcenter, weno, Δx_)
+
+Evaluate the scalar material operator `v ∂u/∂x` from WENO-reconstructed
+directional derivatives. `vcenter.x` must be collocated with `du`; a staggered
+input is first prepared by `eno5_face_to_center!` at the top-level caller.
+"""
+function material_semi_discretisation_weno5!(du::T, vcenter, weno::WENOScheme, Δx_) where {T <: AbstractArray{<:Real, 1}}
+    (; fl, fr, multithreading) = weno
+    size(vcenter.x) == size(du) || throw(DimensionMismatch(
+        "prepared x velocity has size $(size(vcenter.x)), expected $(size(du))",
+    ))
+
+    @inbounds @maybe_threads multithreading for i in eachindex(du)
+        v = vcenter.x[i]
+        du[i] = @muladd max(v, 0) * (fl.x[i + 1] - fl.x[i]) * Δx_ +
+            min(v, 0) * (fr.x[i + 1] - fr.x[i]) * Δx_
+    end
+    return nothing
+end
+
 
 """
     upwind_update_1D!(u, v, weno, nx, Δx_, Δt)

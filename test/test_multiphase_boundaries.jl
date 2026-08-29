@@ -15,6 +15,9 @@ import FiniteDiffWENO5: validate_multiphase_boundary, validate_multiphase_inflow
             (PeriodicBC(), PeriodicBC())
         @test MultiphaseWENOScheme(phases; boundary = (0, 1)).boundary ==
             (ExtrapolateBC(), ExtrapolateBC())
+        @test_throws ArgumentError MultiphaseWENOScheme(
+            phases; boundary = (PeriodicBC(), ExtrapolateBC()), stag = true,
+        )
     end
 
     @testset "constant inflow compositions" begin
@@ -117,7 +120,10 @@ import FiniteDiffWENO5: validate_multiphase_boundary, validate_multiphase_inflow
     @testset "scalar route still rejects tuple inflow" begin
         # this is what keeps a phase vector from being silently accepted by WENOScheme
         @test_throws ArgumentError WENOScheme(
-            zeros(8); boundary = (PrescribedInflowBC((0.2, 0.3, 0.5)), ExtrapolateBC())
+            zeros(8);
+            boundary = (PrescribedInflowBC((0.2, 0.3, 0.5)), ExtrapolateBC()),
+            form = :nonconservative,
+            stag = false,
         )
 
         # the refactor left face normalization behaviourally identical

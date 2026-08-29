@@ -86,31 +86,6 @@ end
     end
 end
 
-@kernel inbounds = true function multiphase_semi_staggered_KA_2D!(
-        du, state, fl, fr, v, divv, Δx_, Δy_, ::Val{NP}, g, O
-    ) where {NP}
-    I = @index(Global, Cartesian)
-    I = I + O
-    i, j = I[1], I[2]
-    d = @muladd (v.x[i + 1, j] - v.x[i, j]) * Δx_ +
-        (v.y[i, j + 1] - v.y[i, j]) * Δy_
-    divv[I] = d
-    for q in 1:NP
-        fluxdiv = @muladd (
-            max(v.x[i + 1, j], 0) * fl.x[q][i + 1, j] +
-                min(v.x[i + 1, j], 0) * fr.x[q][i + 1, j] -
-                max(v.x[i, j], 0) * fl.x[q][i, j] -
-                min(v.x[i, j], 0) * fr.x[q][i, j]
-        ) * Δx_ + (
-            max(v.y[i, j + 1], 0) * fl.y[q][i, j + 1] +
-                min(v.y[i, j + 1], 0) * fr.y[q][i, j + 1] -
-                max(v.y[i, j], 0) * fl.y[q][i, j] -
-                min(v.y[i, j], 0) * fr.y[q][i, j]
-        ) * Δy_
-        du[q][I] = @muladd fluxdiv - state[q][I] * d
-    end
-end
-
 @kernel inbounds = true function multiphase_semi_collocated_KA_2D!(
         du, fl, fr, v, Δx_, Δy_, ::Val{NP}, g, O
     ) where {NP}
@@ -126,10 +101,21 @@ end
     end
 end
 
+"""
+    launch_multiphase_stage_KA_2D!(dest, initial, stage, du, fl, fr, vcell, boundary,
+                                    nx, ny, χ, γ, ζ, ϵ, Δx_, Δy_, a, b, Δt, phase_count,
+                                    backend, fx, fy, semi, limited_update)
+
+Material transport on every layout: `vcell` is already cell-centred (the caller
+prepares a staggered velocity once, outside the RK stages), so the collocated
+kernel `semi` IS the material operator. `limited_update` applies the shared
+simplex limiter to the forward-Euler sub-step before taking the SSP convex
+combination, matching the CPU multiphase stepper exactly.
+"""
 function launch_multiphase_stage_KA_2D!(
-        dest, initial, stage, du, fl, fr, v, divv, boundary, stag,
-        nx, ny, χ, γ, ζ, ϵ, Δx_, Δy_, a, b, c, Δt, phase_count, backend,
-        fx, fy, semi, update
+        dest, initial, stage, du, fl, fr, vcell, boundary,
+        nx, ny, χ, γ, ζ, ϵ, Δx_, Δy_, a, b, Δt, phase_count, backend,
+        fx, fy, semi, limited_update,
     )
     fx(
         fl.x, fr.x, stage, boundary, nx, χ, γ, ζ, ϵ, phase_count, nothing, Offset0;
@@ -140,21 +126,31 @@ function launch_multiphase_stage_KA_2D!(
         ndrange = size(fl.y[1])
     )
     synchronize(backend)
-    if stag
-        semi(
-            du, stage, fl, fr, v, divv, Δx_, Δy_, phase_count, nothing, Offset0;
-            ndrange = size(du[1])
-        )
-    else
-        semi(du, fl, fr, v, Δx_, Δy_, phase_count, nothing, Offset0; ndrange = size(du[1]))
-    end
+    semi(du, fl, fr, vcell, Δx_, Δy_, phase_count, nothing, Offset0; ndrange = size(du[1]))
     synchronize(backend)
-    update(
-        dest, initial, stage, du, a, b, c, Δt, phase_count, nothing, Offset0;
+    limited_update(
+        dest, initial, stage, du, a, b, Δt, phase_count, nothing, Offset0;
         ndrange = size(dest[1])
     )
     synchronize(backend)
     return nothing
+end
+
+"""Interpolate a staggered multiphase velocity to cell centres once per step (2D)."""
+function prepare_multiphase_velocity_KA_2D!(scheme, v, nx, ny, backend)
+    scheme.stag || return v
+    scheme.vcenter === nothing && return v
+    FiniteDiffWENO5.validate_staggered_velocity!(scheme.vcenter, v; periodic = scheme.vperiodic)
+    px, py = scheme.vperiodic.x, scheme.vperiodic.y
+    cx, cy = scheme.vcenter.x, scheme.vcenter.y
+    kx = nx >= FiniteDiffWENO5.eno5_minimum_cells(px) ?
+        eno5_face_to_center_KA_2D_x!(backend) : linear_face_to_center_KA_2D_x!(backend)
+    ky = ny >= FiniteDiffWENO5.eno5_minimum_cells(py) ?
+        eno5_face_to_center_KA_2D_y!(backend) : linear_face_to_center_KA_2D_y!(backend)
+    kx(cx, v.x, nx, px, nothing, Offset0, ndrange = size(cx))
+    ky(cy, v.y, ny, py, nothing, Offset0, ndrange = size(cy))
+    synchronize(backend)
+    return (; x = cx, y = cy)
 end
 
 if nameof(@__MODULE__) == :KAExt
@@ -174,29 +170,29 @@ if nameof(@__MODULE__) == :KAExt
         @assert get_backend(v.x) == backend
         @assert get_backend(v.y) == backend
 
-        (; fl, fr, ut, du, divv, boundary, stag, χ, γ, ζ, ϵ) = scheme
+        (; fl, fr, ut, du, boundary, χ, γ, ζ, ϵ) = scheme
         nx, ny = size(phases[1])
         Δx_, Δy_ = inv(Δx), inv(Δy)
         phase_count = Val(NP)
+        vcell = prepare_multiphase_velocity_KA_2D!(scheme, v, nx, ny, backend)
         fx = multiphase_WENO_flux_KA_2D_x!(backend)
         fy = multiphase_WENO_flux_KA_2D_y!(backend)
-        semi = stag ? multiphase_semi_staggered_KA_2D!(backend) :
-            multiphase_semi_collocated_KA_2D!(backend)
-        update = multiphase_RK_update_KA!(backend)
+        semi = multiphase_semi_collocated_KA_2D!(backend)
+        limited_update = multiphase_RK_limited_update_KA!(backend)
         launch_multiphase_stage_KA_2D!(
-            ut, phases, phases, du, fl, fr, v, divv,
-            boundary, stag, nx, ny, χ, γ, ζ, ϵ, Δx_, Δy_, 1.0, 0.0, 1.0, Δt,
-            phase_count, backend, fx, fy, semi, update
+            ut, phases, phases, du, fl, fr, vcell,
+            boundary, nx, ny, χ, γ, ζ, ϵ, Δx_, Δy_, 0.0, 1.0, Δt,
+            phase_count, backend, fx, fy, semi, limited_update
         )
         launch_multiphase_stage_KA_2D!(
-            ut, phases, ut, du, fl, fr, v, divv,
-            boundary, stag, nx, ny, χ, γ, ζ, ϵ, Δx_, Δy_, 0.75, 0.25, 0.25, Δt,
-            phase_count, backend, fx, fy, semi, update
+            ut, phases, ut, du, fl, fr, vcell,
+            boundary, nx, ny, χ, γ, ζ, ϵ, Δx_, Δy_, 0.75, 0.25, Δt,
+            phase_count, backend, fx, fy, semi, limited_update
         )
         launch_multiphase_stage_KA_2D!(
-            phases, phases, ut, du, fl, fr, v, divv,
-            boundary, stag, nx, ny, χ, γ, ζ, ϵ, Δx_, Δy_, 1.0 / 3.0, 2.0 / 3.0,
-            2.0 / 3.0, Δt, phase_count, backend, fx, fy, semi, update
+            phases, phases, ut, du, fl, fr, vcell,
+            boundary, nx, ny, χ, γ, ζ, ϵ, Δx_, Δy_, 1.0 / 3.0, 2.0 / 3.0,
+            Δt, phase_count, backend, fx, fy, semi, limited_update
         )
         return nothing
     end
