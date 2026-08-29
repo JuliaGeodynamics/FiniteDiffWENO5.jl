@@ -77,7 +77,7 @@ end
         @test isconcretetype(typeof(scheme))
         @test isconcretetype(typeof(MultiphaseWENOScheme(phases; stag = true)))
         @test (@inferred nphases(scheme)) == 3
-        @test Base.infer_return_type(MultiphaseWENOScheme, Tuple{typeof(phases)}) !== Any
+        @test Core.Compiler.return_type(MultiphaseWENOScheme, Tuple{typeof(phases)}) !== Any
 
         # element type is taken from the phases
         phases32 = (zeros(Float32, 6), zeros(Float32, 6))
