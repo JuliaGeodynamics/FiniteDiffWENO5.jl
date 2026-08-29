@@ -11,7 +11,7 @@ The implementation of a finite-difference WENO scheme involves the following mai
 4. **Reconstruction**: The final high-order approximation is obtained by combining the candidate polynomials using the computed weights.
 5. **Flux Evaluation**: The reconstructed values are used to approximate the variable of interest at the cell interfaces, which are then used in the numerical flux calculations.
 
-The package currently implements the WENO-Z reconstruction developed by [Borges et al. (2008)](https://doi.org/10.1016/j.jcp.2007.11.038). This variant introduces a modified computation of the nonlinear weights that improves accuracy near critical points—where the first derivative of the solution vanishes—while preserving the robust, non-oscillatory behavior of the classical WENO methods. Additional reconstruction variants may be included in future versions.
+The package currently implements the WENO-Z reconstruction developed by [Borges et al. (2008)](https://doi.org/10.1016/j.jcp.2007.11.038). This variant introduces a modified computation of the nonlinear weights that improves accuracy near critical points, where the first derivative of the solution vanishes, while preserving the robust, non-oscillatory behavior of the classical WENO methods. Additional reconstruction variants may be included in future versions.
 
 ## PDE form and velocity layout are independent choices
 
