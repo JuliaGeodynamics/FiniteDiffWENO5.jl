@@ -20,30 +20,33 @@ Advance the solution `u` by one time step using the 3rd-order SSP Runge-Kutta me
 Citation: Borges et al. 2008: "An improved weighted essentially non-oscillatory scheme for hyperbolic conservation laws"
           doi:10.1016/j.jcp.2007.11.038
 """
-function WENO_step!(u::T, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<:Real}, 2}}}, weno::WENOScheme, Δt, Δx, Δy; u_min = 0.0, u_max = 0.0) where {T <: AbstractArray{<:Real, 2}}
+function WENO_step!(u::T, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<:Real}, 2}}}, weno::WENOScheme, Δt, Δx, Δy; u_min = 0.0, u_max = 0.0, lf_speeds = nothing) where {T <: AbstractArray{<:Real, 2}}
 
     nx, ny = size(u, 1), size(u, 2)
     Δx_, Δy_ = inv(Δx), inv(Δy)
 
-    (; ut, du, stag, fl, fr, multithreading, upwind_mode) = weno
+    (; ut, du, stag, fl, fr, multithreading, upwind_mode, form) = weno
 
     if !upwind_mode
-        WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
-        semi_discretisation_weno5!(du, v, weno, Δx_, Δy_)
+        # Velocity is prepared once, outside the three RK stages. The
+        # Lax-Friedrichs speeds are likewise constant across all three stages.
+        voperator = prepare_velocity!(weno, v)
+        conservative = is_conservative(form)
+        αx = conservative ? (lf_speeds === nothing ? lf_speed(voperator.x) : lf_speeds.x) : zero(eltype(u))
+        αy = conservative ? (lf_speeds === nothing ? lf_speed(voperator.y) : lf_speeds.y) : zero(eltype(u))
+        scalar_operator_2D!(du, u, voperator, weno, nx, ny, Δx_, Δy_, u_min, u_max, αx, αy)
 
         @inbounds @maybe_threads multithreading for I in CartesianIndices(ut)
             ut[I] = @muladd u[I] - Δt * du[I]
         end
 
-        WENO_flux!(fl, fr, ut, weno, nx, ny, u_max, u_min)
-        semi_discretisation_weno5!(du, v, weno, Δx_, Δy_)
+        scalar_operator_2D!(du, ut, voperator, weno, nx, ny, Δx_, Δy_, u_min, u_max, αx, αy)
 
         @inbounds @maybe_threads multithreading for I in CartesianIndices(ut)
             ut[I] = @muladd 0.75 * u[I] + 0.25 * ut[I] - 0.25 * Δt * du[I]
         end
 
-        WENO_flux!(fl, fr, ut, weno, nx, ny, u_max, u_min)
-        semi_discretisation_weno5!(du, v, weno, Δx_, Δy_)
+        scalar_operator_2D!(du, ut, voperator, weno, nx, ny, Δx_, Δy_, u_min, u_max, αx, αy)
 
         @inbounds @maybe_threads multithreading for I in CartesianIndices(u)
             u[I] = @muladd 1.0 / 3.0 * u[I] + 2.0 / 3.0 * ut[I] - (2.0 / 3.0) * Δt * du[I]

@@ -25,7 +25,7 @@
         u2_multi = copy(u2_init)
         u3_multi = copy(u3_init)
 
-        weno = WENOScheme(u1_init; boundary = (2, 2), stag = true)
+        weno = WENOScheme(u1_init; boundary = (2, 2), form = :conservative, stag = true)
 
         a = (; x = ones(nx + 1))
         Δx = x[2] - x[1]
@@ -94,7 +94,7 @@
         u1_multi = copy(u1_init)
         u2_multi = copy(u2_init)
 
-        weno = WENOScheme(u1_init; boundary = (2, 2, 2, 2), stag = false, multithreading = false)
+        weno = WENOScheme(u1_init; boundary = (2, 2, 2, 2), form = :nonconservative, stag = false, multithreading = false)
 
         Δt = CFL * min(Δx, Δy)^(5 / 3)
         tmax = period * Lx / max(maximum(abs.(vx0)), maximum(abs.(vy0)))
@@ -158,7 +158,7 @@
         u1_multi = copy(u1_init)
         u2_multi = copy(u2_init)
 
-        weno = WENOScheme(u1_init; boundary = (2, 2, 2, 2, 2, 2), stag = false, multithreading = false)
+        weno = WENOScheme(u1_init; boundary = (2, 2, 2, 2, 2, 2), form = :nonconservative, stag = false, multithreading = false)
 
         Δt = CFL * min(Δx, Δy, Δz)^(5 / 3)
         tmax = period * L / max(maximum(abs.(vx0)), maximum(abs.(vy0)))
@@ -207,7 +207,7 @@
         u1_multi = copy(u1_init)
         u2_multi = copy(u2_init)
 
-        weno = WENOScheme(u1_init, backend; boundary = (2, 2), stag = true)
+        weno = WENOScheme(u1_init, backend; boundary = (2, 2), form = :conservative, stag = true)
 
         a = (; x = KernelAbstractions.ones(backend, Float64, nx + 1))
         Δx = x[2] - x[1]
@@ -264,7 +264,7 @@
         set!(u1_multi, u1_init)
         set!(u2_multi, u2_init)
 
-        weno = WENOScheme(u1_single, grid; boundary = (2, 2), stag = true)
+        weno = WENOScheme(u1_single, grid; boundary = (2, 2), form = :conservative, stag = true)
 
         a_vec = ones(nx + 1)
         a = VectorField(backend, grid)
@@ -292,5 +292,38 @@
 
         @test interior(u1_multi) ≈ interior(u1_single)
         @test interior(u2_multi) ≈ interior(u2_single)
+    end
+
+    @testset "multi-field tuple dispatch does not shadow non-Array backends" begin
+        # WENOScheme is the same struct for every backend, so a CPU-only tuple
+        # method typed as `WENOScheme` without a stricter array-type constraint
+        # would out-specificity `WENO_step!(u::Tuple, args...)` in src/utils.jl for
+        # every backend, not just plain Arrays — silently routing GPU/Chmy tuple
+        # calls into `prepare_velocity!`'s CPU-only scalar-indexing loop, which
+        # throws under GPUArrays.jl's `allowscalar(false)` (or runs pathologically
+        # slowly if allowed). This is invisible on CPU-only CI, so pin it by
+        # inspecting which method resolves rather than only checking numerics.
+        n = 8
+        arch = Arch(CPU())
+        grid = UniformGrid(arch; origin = (0.0,), extent = (1.0,), dims = (n,))
+        u = Field(CPU(), grid, Center())
+        @test !(typeof(u) <: Array)  # the property the fix's constraint relies on
+        weno = WENOScheme(u, grid; form = :nonconservative, stag = false)
+
+        resolved = which(
+            WENO_step!,
+            (
+                Tuple{typeof(u), typeof(u)},
+                NamedTuple{(:x,), Tuple{typeof(u)}},
+                typeof(weno), Float64, Float64, typeof(grid), typeof(arch),
+            ),
+        )
+
+        # Must resolve to a Chmy-aware method (its own override in ext/ChmyExt.jl,
+        # or, failing that, the generic per-field forwarder in src/utils.jl) —
+        # never the plain-`Array`-only fast path in
+        # src/multi_field_time_stepping.jl, which would reach
+        # `prepare_velocity!`'s CPU-only scalar loop for a non-`Array` field.
+        @test basename(String(resolved.file)) != "multi_field_time_stepping.jl"
     end
 end

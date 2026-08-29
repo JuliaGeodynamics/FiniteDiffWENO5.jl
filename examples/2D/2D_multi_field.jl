@@ -21,7 +21,9 @@ function main(; nx = 400, ny = 400)
     vy0 = ones(nx, ny)
     v = (; x = vy0, y = vx0)
 
-    # Three chemical components with different initial conditions
+    # Three independent fields with different initial conditions.  They are not
+    # normalised and therefore do not form a multiphase composition; use the
+    # multiphase examples when component fractions must sum to one.
     x0 = 1 / 4
     c_width1 = 0.08
     c_width2 = 0.06
@@ -42,7 +44,10 @@ function main(; nx = 400, ny = 400)
     c3_0 = copy(c3)
 
     # Create a single WENOScheme shared by all fields
-    weno = WENOScheme(c1; boundary = (2, 2, 2, 2), stag = false, multithreading = true)
+    weno = WENOScheme(
+        c1; form = :nonconservative, boundary = (2, 2, 2, 2), stag = false,
+        multithreading = true,
+    )
 
     Δt = CFL * min(Δx, Δy)^(5 / 3)
     tmax = period * Lx / max(maximum(abs.(vx0)), maximum(abs.(vy0)))

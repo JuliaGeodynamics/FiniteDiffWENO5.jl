@@ -40,7 +40,7 @@ function main(; backend = CPU(), nx = 400, ny = 400, stag = true)
     u = KernelAbstractions.zeros(backend, Float64, nx, ny)
     copyto!(u, u0)
 
-    weno = WENOScheme(u, backend; boundary = (2, 2, 2, 2), stag = stag)
+    weno = WENOScheme(u, backend; form = :nonconservative, boundary = (2, 2, 2, 2), stag = stag)
 
     if stag
         v = (;

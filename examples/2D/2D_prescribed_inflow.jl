@@ -28,8 +28,14 @@ function main(; nx = 240, ny = 120, tmax = 0.8)
         bot = ExtrapolateBC(),
         top = ExtrapolateBC(),
     )
+    # Non-conservative (material) transport: the conservative path's inflow closure
+    # is only first-order accurate at the boundary by construction (see
+    # src/WENO5/conservative_flux.jl), which would visibly blur the whole point of
+    # this demo — a smooth prescribed profile advecting in from the west face.
+    # Non-conservative substitutes the prescribed state directly, at full order.
     weno = WENOScheme(
         temperature;
+        form = :nonconservative,
         boundary,
         stag = true,
         multithreading = true,

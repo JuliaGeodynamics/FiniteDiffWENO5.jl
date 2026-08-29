@@ -46,7 +46,7 @@ function main(nx = 400)
 
 
     u = copy(u0_vec)
-    weno = WENOScheme(u; boundary = (2, 2), stag = true, multithreading = false)
+    weno = WENOScheme(u; form = :nonconservative, boundary = (2, 2), stag = true, multithreading = false)
 
     # advection velocity
     a = (; x = ones(nx + 1))

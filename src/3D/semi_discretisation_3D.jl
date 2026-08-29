@@ -194,6 +194,25 @@ function semi_discretisation_weno5!(du::T, v, weno::WENOScheme, Δx_, Δy_, Δz_
     return nothing
 end
 
+"""Evaluate `v_x ∂u/∂x + v_y ∂u/∂y + v_z ∂u/∂z` using prepared cell velocity."""
+function material_semi_discretisation_weno5!(du::T, vcenter, weno::WENOScheme, Δx_, Δy_, Δz_) where {T <: AbstractArray{<:Real, 3}}
+    (; fl, fr, multithreading) = weno
+    (size(vcenter.x) == size(du) && size(vcenter.y) == size(du) && size(vcenter.z) == size(du)) ||
+        throw(DimensionMismatch("prepared velocity components must all have size $(size(du))"))
+
+    @inbounds @maybe_threads multithreading for I in CartesianIndices(du)
+        i, j, k = Tuple(I)
+        vx, vy, vz = vcenter.x[I], vcenter.y[I], vcenter.z[I]
+        du[I] = @muladd max(vx, 0) * (fl.x[i + 1, j, k] - fl.x[I]) * Δx_ +
+            min(vx, 0) * (fr.x[i + 1, j, k] - fr.x[I]) * Δx_ +
+            max(vy, 0) * (fl.y[i, j + 1, k] - fl.y[I]) * Δy_ +
+            min(vy, 0) * (fr.y[i, j + 1, k] - fr.y[I]) * Δy_ +
+            max(vz, 0) * (fl.z[i, j, k + 1] - fl.z[I]) * Δz_ +
+            min(vz, 0) * (fr.z[i, j, k + 1] - fr.z[I]) * Δz_
+    end
+    return nothing
+end
+
 
 function upwind_update_3D!(
         u, v, weno, nx, ny, nz, Δx_, Δy_, Δz_, Δt
@@ -251,4 +270,21 @@ function upwind_update_3D!(
     end
 
     return u
+end
+
+"""
+    scalar_operator_3D!(du, state, vcell, weno, nx, ny, nz, Δx_, Δy_, Δz_, u_min, u_max)
+
+Three-dimensional counterpart of [`scalar_operator_1D!`](@ref).
+"""
+@inline function scalar_operator_3D!(du, state, vcell, weno::WENOScheme, nx, ny, nz, Δx_, Δy_, Δz_, u_min, u_max, αx, αy, αz)
+    if !is_conservative(weno.form)
+        # NOTE: 3D passes (u_min, u_max) while 2D passes (u_max, u_min); both
+        # orderings are preserved exactly as they were before form dispatch.
+        WENO_flux!(weno.fl, weno.fr, state, weno, nx, ny, nz, u_min, u_max)
+        material_semi_discretisation_weno5!(du, vcell, weno, Δx_, Δy_, Δz_)
+    else
+        conservative_semi_discretisation_weno5!(du, state, vcell, weno, nx, ny, nz, Δx_, Δy_, Δz_, αx, αy, αz)
+    end
+    return nothing
 end

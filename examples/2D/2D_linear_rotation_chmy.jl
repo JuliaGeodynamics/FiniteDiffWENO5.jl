@@ -39,7 +39,7 @@ function main(; backend = CPU(), nx = 400, ny = 400)
     u = Field(backend, grid, Center())
     set!(u, u0)
 
-    weno = WENOScheme(u, grid; boundary = (2, 2, 2, 2), stag = false, multithreading = true)
+    weno = WENOScheme(u, grid; form = :nonconservative, boundary = (2, 2, 2, 2), stag = false, multithreading = true)
 
     v = (
         x = Field(arch, grid, Center()),

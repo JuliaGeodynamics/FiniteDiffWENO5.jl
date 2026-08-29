@@ -50,7 +50,15 @@ function main(; nx = 400, ny = 400)
     end
 
     u = copy(u0)
-    weno = WENOScheme(u; boundary = (2, 2, 2, 2), stag = true, lim_ZS = true, multithreading = true)
+    # Material (non-conservative) transport: this demo's whole point is bound
+    # preservation of a sharp field via the Zhang-Shu limiter, which only the
+    # non-conservative path currently supports (the conservative split-flux
+    # path has no bound-preserving flux limiter yet). `stag=true` only means
+    # the velocity is face-staggered; it no longer implies conservative form.
+    weno = WENOScheme(
+        u; form = :nonconservative, boundary = (2, 2, 2, 2), stag = true,
+        lim_ZS = true, multithreading = true,
+    )
 
 
     # grid size
