@@ -109,17 +109,17 @@ function semidiscrete_error(nx)
     exact = ntuple(3) do k
         [
             begin
-                    vx, vy = periodic_rotation_velocity(xi, yj)
-                    _, b1x, b1y = bump_and_gradient(xi, yj, 0.36, 0.5, 0.055)
-                    _, b2x, b2y = bump_and_gradient(xi, yj, 0.58, 0.43, 0.05)
-                    if k == 1
-                        0.25 * (vx * b1x + vy * b1y)
+                vx, vy = periodic_rotation_velocity(xi, yj)
+                _, b1x, b1y = bump_and_gradient(xi, yj, 0.36, 0.5, 0.055)
+                _, b2x, b2y = bump_and_gradient(xi, yj, 0.58, 0.43, 0.05)
+                if k == 1
+                    0.25 * (vx * b1x + vy * b1y)
                 elseif k == 2
-                        0.2 * (vx * b2x + vy * b2y)
+                    0.2 * (vx * b2x + vy * b2y)
                 else
-                        -(0.25 * (vx * b1x + vy * b1y) + 0.2 * (vx * b2x + vy * b2y))
+                    -(0.25 * (vx * b1x + vy * b1y) + 0.2 * (vx * b2x + vy * b2y))
                 end
-                end for xi in x, yj in y
+            end for xi in x, yj in y
         ]
     end
     return error_norms(scheme.du, exact, Δx, Δy)
