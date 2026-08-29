@@ -66,10 +66,10 @@ function analytic_phases(nx, ny, t = 0.0)
         # exact rigid rotation there gives the exact solution; the exponentially
         # small tail beyond that disk is far below WENO's truncation error at any
         # resolution tested. The velocity is identically zero near each periodic seam.
-        b1, _, _ = bump_and_gradient(x0, y0, 0.36, 0.50, 0.055)
+        b1, _, _ = bump_and_gradient(x0, y0, 0.36, 0.5, 0.055)
         b2, _, _ = bump_and_gradient(x0, y0, 0.58, 0.43, 0.05)
-        phase1[i, j] = 0.30 + 0.25 * b1
-        phase2[i, j] = 0.35 + 0.20 * b2
+        phase1[i, j] = 0.3 + 0.25 * b1
+        phase2[i, j] = 0.35 + 0.2 * b2
         phase3[i, j] = 1 - phase1[i, j] - phase2[i, j]
     end
     return (phase1, phase2, phase3), Δx, Δy
@@ -107,18 +107,20 @@ function semidiscrete_error(nx)
     x = ((1:nx) .- 0.5) .* Δx
     y = ((1:nx) .- 0.5) .* Δy
     exact = ntuple(3) do k
-        [begin
-            vx, vy = periodic_rotation_velocity(xi, yj)
-            _, b1x, b1y = bump_and_gradient(xi, yj, 0.36, 0.50, 0.055)
-            _, b2x, b2y = bump_and_gradient(xi, yj, 0.58, 0.43, 0.05)
-            if k == 1
-                0.25 * (vx * b1x + vy * b1y)
-            elseif k == 2
-                0.20 * (vx * b2x + vy * b2y)
-            else
-                -(0.25 * (vx * b1x + vy * b1y) + 0.20 * (vx * b2x + vy * b2y))
-            end
-        end for xi in x, yj in y]
+        [
+            begin
+                    vx, vy = periodic_rotation_velocity(xi, yj)
+                    _, b1x, b1y = bump_and_gradient(xi, yj, 0.36, 0.5, 0.055)
+                    _, b2x, b2y = bump_and_gradient(xi, yj, 0.58, 0.43, 0.05)
+                    if k == 1
+                        0.25 * (vx * b1x + vy * b1y)
+                elseif k == 2
+                        0.2 * (vx * b2x + vy * b2y)
+                else
+                        -(0.25 * (vx * b1x + vy * b1y) + 0.2 * (vx * b2x + vy * b2y))
+                end
+                end for xi in x, yj in y
+        ]
     end
     return error_norms(scheme.du, exact, Δx, Δy)
 end
@@ -150,7 +152,7 @@ function integrated_error(nx, duration)
 end
 
 function rates(values)
-    return [log2(values[i] / values[i + 1]) for i in 1:length(values)-1]
+    return [log2(values[i] / values[i + 1]) for i in 1:(length(values) - 1)]
 end
 
 resolutions = (32, 64, 128)
@@ -261,7 +263,8 @@ error_field = abs.(snapshot.numerical[1] .- snapshot.exact[1])
 field_panel!(
     3, 1, error_field,
     "|ϕ₁ numerical − exact|, max = $(round(maximum(error_field); sigdigits = 3))",
-    :magma, (0.0, max(maximum(error_field), eps())))
+    :magma, (0.0, max(maximum(error_field), eps()))
+)
 
 # The simplex residual is the invariant the multiphase scheme exists to protect:
 # it must sit at roundoff regardless of how the convergence rate behaves.
@@ -270,7 +273,8 @@ residual_scale = max(maximum(abs, simplex_residual), eps())
 field_panel!(
     3, 2, simplex_residual,
     "Σϕ − 1, max|·| = $(round(residual_scale; sigdigits = 3))",
-    :balance, (-residual_scale, residual_scale))
+    :balance, (-residual_scale, residual_scale)
+)
 
 # Per-phase error at the snapshot, to confirm no single phase carries the error.
 phase_errors = [maximum(abs, snapshot.numerical[k] .- snapshot.exact[k]) for k in 1:3]

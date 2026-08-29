@@ -11,7 +11,7 @@ function run_case(n)
     X = repeat(x, 1, n)
     Y = repeat(x', n, 1)
 
-    p1 = @. 0.30 + 0.07 * sinpi(2X) * cospi(2Y)
+    p1 = @. 0.3 + 0.07 * sinpi(2X) * cospi(2Y)
     p2 = @. 0.35 + 0.06 * cospi(2X) * sinpi(2Y)
     phases = (p1, p2, 1 .- p1 .- p2)
 
