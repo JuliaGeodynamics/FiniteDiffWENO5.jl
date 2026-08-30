@@ -93,44 +93,6 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, u_max, u_min)
     return nothing
 end
 
-function semi_discretisation_weno5!(du::T, v, weno::WENOScheme, Δx_, Δy_) where {T <: AbstractArray{<:Real, 2}}
-
-    (; fl, fr, stag, multithreading) = weno
-
-    # use staggered grid or not for the velocities
-    if stag
-        @inbounds @maybe_threads multithreading for I in CartesianIndices(du)
-
-            i, j = Tuple(I)
-
-            du[I] = @muladd (
-                max(v.x[i + 1, j], 0) * fl.x[i + 1, j] +
-                    min(v.x[i + 1, j], 0) * fr.x[i + 1, j] -
-                    max(v.x[I], 0) * fl.x[I] -
-                    min(v.x[I], 0) * fr.x[I]
-            ) * Δx_ +
-                (
-                max(v.y[i, j + 1], 0) * fl.y[i, j + 1] +
-                    min(v.y[i, j + 1], 0) * fr.y[i, j + 1] -
-                    max(v.y[I], 0) * fl.y[I] -
-                    min(v.y[I], 0) * fr.y[I]
-            ) * Δy_
-        end
-    else
-        @inbounds @maybe_threads multithreading for I in CartesianIndices(du)
-
-            i, j = Tuple(I)
-
-            du[I] = @muladd max(v.x[I], 0) * (fl.x[i + 1, j] - fl.x[I]) * Δx_ +
-                min(v.x[I], 0) * (fr.x[i + 1, j] - fr.x[I]) * Δx_ +
-                max(v.y[I], 0) * (fl.y[i, j + 1] - fl.y[I]) * Δy_ +
-                min(v.y[I], 0) * (fr.y[i, j + 1] - fr.y[I]) * Δy_
-        end
-    end
-
-    return nothing
-end
-
 """Evaluate `v_x ∂u/∂x + v_y ∂u/∂y` using prepared cell-centred velocity."""
 function material_semi_discretisation_weno5!(du::T, vcenter, weno::WENOScheme, Δx_, Δy_) where {T <: AbstractArray{<:Real, 2}}
     (; fl, fr, multithreading) = weno
