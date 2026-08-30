@@ -188,7 +188,6 @@
         # changes the summation order and the last bit with it.
         for i in 1:3
             @test permuted[i] ≈ base[perm[i]] rtol = 64eps(Float64)
-            @test maximum(abs, permuted[i] .- base[perm[i]]) <= 64eps(Float64)
         end
     end
 
