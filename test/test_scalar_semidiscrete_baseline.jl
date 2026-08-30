@@ -1,41 +1,7 @@
 using Test
 using FiniteDiffWENO5
 
-function scalar_semidiscrete_error(n; stag)
-    Δx = inv(float(n))
-    x = ((1:n) .- 0.5) .* Δx
-    u = 1 .+ 0.2 .* sinpi.(2 .* x) .+ 0.1 .* cospi.(4 .* x)
-    v_center = 1 .+ 0.3 .* sinpi.(2 .* x)
-    v_face = 1 .+ 0.3 .* sinpi.(2 .* ((0:n) .* Δx))
-    boundary = (PeriodicBC(), PeriodicBC())
-    form = stag ? :conservative : :nonconservative
-    weno = WENOScheme(u; boundary, form, stag, multithreading = false)
-
-    FiniteDiffWENO5.WENO_flux!(weno.fl, weno.fr, u, weno, n, 0.0, 0.0)
-    velocity = (; x = stag ? v_face : v_center)
-    FiniteDiffWENO5.semi_discretisation_weno5!(weno.du, velocity, weno, inv(Δx))
-
-    ux = 0.4π .* cospi.(2 .* x) .- 0.4π .* sinpi.(4 .* x)
-    exact = stag ? v_center .* ux .+ 0.6π .* cospi.(2 .* x) .* u : v_center .* ux
-    return Δx * sum(abs, weno.du .- exact)
-end
-
-function scalar_semidiscrete_rates(; stag)
-    errors = [scalar_semidiscrete_error(n; stag) for n in (64, 128, 256, 512)]
-    return log2.(errors[1:(end - 1)] ./ errors[2:end])
-end
-
 @testset "scalar semidiscrete baseline" begin
-    @testset "legacy staggered conservative product is second order" begin
-        rates = scalar_semidiscrete_rates(stag = true)
-        @test all(1.8 .< rates[2:end] .< 2.3)
-    end
-
-    @testset "collocated material derivative is fifth order" begin
-        rates = scalar_semidiscrete_rates(stag = false)
-        @test all(>(4.5), rates)
-    end
-
     @testset "ENO-prepared staggered velocity restores fifth-order material transport" begin
         errors = Float64[]
         for n in (32, 64, 128, 256)

@@ -148,52 +148,6 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
     return nothing
 end
 
-function semi_discretisation_weno5!(du::T, v, weno::WENOScheme, Δx_, Δy_, Δz_) where {T <: AbstractArray{<:Real, 3}}
-
-    (; fl, fr, stag, multithreading) = weno
-
-    # use staggered grid or not for the velocities
-    if stag
-        @inbounds @maybe_threads multithreading for I in CartesianIndices(du)
-
-            i, j, k = Tuple(I)
-
-            du[I] = @muladd (
-                max(v.x[i + 1, j, k], 0) * fl.x[i + 1, j, k] +
-                    min(v.x[i + 1, j, k], 0) * fr.x[i + 1, j, k] -
-                    max(v.x[I], 0) * fl.x[I] -
-                    min(v.x[I], 0) * fr.x[I]
-            ) * Δx_ +
-                (
-                max(v.y[i, j + 1, k], 0) * fl.y[i, j + 1, k] +
-                    min(v.y[i, j + 1, k], 0) * fr.y[i, j + 1, k] -
-                    max(v.y[I], 0) * fl.y[I] -
-                    min(v.y[I], 0) * fr.y[I]
-            ) * Δy_ +
-                (
-                max(v.z[i, j, k + 1], 0) * fl.z[i, j, k + 1] +
-                    min(v.z[i, j, k + 1], 0) * fr.z[i, j, k + 1] -
-                    max(v.z[I], 0) * fl.z[I] -
-                    min(v.z[I], 0) * fr.z[I]
-            ) * Δz_
-        end
-    else
-        @inbounds @maybe_threads multithreading for I in CartesianIndices(du)
-
-            i, j, k = Tuple(I)
-
-            du[I] = @muladd max(v.x[I], 0) * (fl.x[i + 1, j, k] - fl.x[I]) * Δx_ +
-                min(v.x[I], 0) * (fr.x[i + 1, j, k] - fr.x[I]) * Δx_ +
-                max(v.y[I], 0) * (fl.y[i, j + 1, k] - fl.y[I]) * Δy_ +
-                min(v.y[I], 0) * (fr.y[i, j + 1, k] - fr.y[I]) * Δy_ +
-                max(v.z[I], 0) * (fl.z[i, j, k + 1] - fl.z[I]) * Δz_ +
-                min(v.z[I], 0) * (fr.z[i, j, k + 1] - fr.z[I]) * Δz_
-        end
-    end
-
-    return nothing
-end
-
 """Evaluate `v_x ∂u/∂x + v_y ∂u/∂y + v_z ∂u/∂z` using prepared cell velocity."""
 function material_semi_discretisation_weno5!(du::T, vcenter, weno::WENOScheme, Δx_, Δy_, Δz_) where {T <: AbstractArray{<:Real, 3}}
     (; fl, fr, multithreading) = weno
