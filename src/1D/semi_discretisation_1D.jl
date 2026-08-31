@@ -86,14 +86,16 @@ end
     upwind_update_1D!(u, v, weno, nx, Δx_, Δt)
 
 Perform a single explicit upwind advection update on field `u`
-using velocity field `v` on a staggered or collocated grid.
+using velocity field `v`.
 
-- If `weno.stag = true`, velocity is assumed to be defined at cell faces.
-- If `weno.stag = false`, velocity is defined at cell centers.
+- Conservative staggered transport uses the face velocity directly in its
+  first-order face flux.
+- Material transport uses cell-centred velocity; a staggered input is prepared
+  with ENO5 by `WENO_step!` before this function is called.
 - Uses the boundary conditions stored in `weno.boundary`.
 """
 function upwind_update_1D!(u, v, weno, nx, Δx_, Δt)
-    (; boundary, stag, multithreading) = weno
+    (; boundary, stag, multithreading, form) = weno
 
     bL = boundary[1]
     bR = boundary[2]
@@ -102,7 +104,7 @@ function upwind_update_1D!(u, v, weno, nx, Δx_, Δt)
         iL = left_index(i - 1, 0, nx, bL)
         iR = right_index(i + 1, 0, nx, bR)
 
-        if stag
+        if stag && is_conservative(form)
             u[i] -= Δt * (
                 max(v.x[i], 0) * (u[i] - u[iL]) +
                     min(v.x[iR], 0) * (u[iR] - u[i])

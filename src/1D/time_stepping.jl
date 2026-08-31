@@ -53,8 +53,11 @@ function WENO_step!(u::T, v::NamedTuple{(:x,), <:Tuple{<:AbstractVector{<:Real}}
         end
 
     else
-        # Use simple upwind scheme for debugging
-        upwind_update_1D!(u, v, weno, nx, Δx_, Δt)
+        # A material equation needs velocity at cell centres even in the
+        # first-order debug update. Conservative staggered upwinding instead
+        # uses its natural face flux directly.
+        vupwind = is_conservative(form) ? v : prepare_velocity!(weno, v)
+        upwind_update_1D!(u, vupwind, weno, nx, Δx_, Δt)
     end
 
     return nothing

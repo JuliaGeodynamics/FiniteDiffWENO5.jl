@@ -236,6 +236,44 @@ end
         end
     end
 
+    @testset "tuple scalar upwind retains conservative face velocity" begin
+        n = 32
+        Δx = inv(float(n))
+        x = ((1:n) .- 0.5) .* Δx
+        faces = (0:n) .* Δx
+        initial() = 1 .+ 0.2 .* sinpi.(2 .* x)
+        face_velocity = 0.8 .+ 0.3 .* sinpi.(2 .* faces)
+        boundary = (PeriodicBC(), PeriodicBC())
+        grid = Chmy.UniformGrid(
+            arch; origin = (0.0,), extent = (1.0,), dims = (n,),
+        )
+        velocity = Chmy.VectorField(backend_chmy, grid)
+        Chmy.set!(velocity.x, face_velocity)
+
+        single = Chmy.Field(backend_chmy, grid, Chmy.Center())
+        Chmy.set!(single, initial())
+        single_scheme = WENOScheme(
+            single, grid; form = :conservative, boundary, stag = true,
+            upwind_mode = true,
+        )
+        WENO_step!(single, velocity, single_scheme, 0.2Δx, Δx, grid, arch)
+
+        first = Chmy.Field(backend_chmy, grid, Chmy.Center())
+        second = Chmy.Field(backend_chmy, grid, Chmy.Center())
+        Chmy.set!(first, initial())
+        Chmy.set!(second, 0.5 .* initial())
+        tuple_scheme = WENOScheme(
+            first, grid; form = :conservative, boundary, stag = true,
+            upwind_mode = true,
+        )
+        WENO_step!(
+            (first, second), velocity, tuple_scheme, 0.2Δx, Δx, grid, arch;
+            u_min = (0.0, 0.0), u_max = (2.0, 2.0),
+        )
+
+        @test agree(Array(Chmy.interior(first)), Array(Chmy.interior(single)))
+    end
+
     @testset "2D scalar staggered" begin
         n = 24
         Δ = inv(float(n))

@@ -210,6 +210,36 @@ using FiniteDiffWENO5
         @test Array(weno.fr.z[:, :, end]) == zhi
     end
 
+    @testset "staggered material upwind prepares velocity" begin
+        nx = 32
+        Δx = inv(float(nx))
+        x = ((1:nx) .- 0.5) .* Δx
+        faces = (0:nx) .* Δx
+        initial = 1 .+ 0.2 .* sinpi.(2 .* x)
+        face_velocity = 0.8 .+ 0.3 .* sinpi.(2 .* faces)
+        center_velocity = zeros(nx)
+        FiniteDiffWENO5.eno5_face_to_center!(
+            center_velocity, face_velocity; periodic = true,
+        )
+        boundary = (PeriodicBC(), PeriodicBC())
+
+        from_faces = copy(initial)
+        staggered = WENOScheme(
+            from_faces; form = :nonconservative, boundary, stag = true,
+            upwind_mode = true, multithreading = false,
+        )
+        from_centers = copy(initial)
+        collocated = WENOScheme(
+            from_centers; form = :nonconservative, boundary, stag = false,
+            upwind_mode = true, multithreading = false,
+        )
+
+        WENO_step!(from_faces, (; x = face_velocity), staggered, 0.2Δx, Δx)
+        WENO_step!(from_centers, (; x = center_velocity), collocated, 0.2Δx, Δx)
+
+        @test from_faces ≈ from_centers rtol = 0 atol = 16eps(Float64)
+    end
+
     @testset "CPU prescribed inflow has only bounded compiler overhead without multithreading" begin
         function allocated_cpu_step()
             nx, ny = 32, 24
