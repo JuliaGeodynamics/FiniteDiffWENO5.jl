@@ -116,7 +116,7 @@ end
 function upwind_update_2D!(
         u, v, weno, nx, ny, Δx_, Δy_, Δt
     )
-    (; boundary, stag, multithreading) = weno
+    (; boundary, stag, multithreading, form) = weno
 
     bLx = boundary[1]
     bRx = boundary[2]
@@ -131,7 +131,7 @@ function upwind_update_2D!(
         jLy = left_index(j - 1, 0, ny, bLy)
         jRy = right_index(j + 1, 0, ny, bRy)
 
-        if stag
+        if stag && is_conservative(form)
             u[i, j] -= Δt * (
                 (
                     max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +

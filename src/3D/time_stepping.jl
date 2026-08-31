@@ -54,8 +54,10 @@ function WENO_step!(u::T, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractArr
             u[I] = @muladd 1.0 / 3.0 * u[I] + 2.0 / 3.0 * ut[I] - (2.0 / 3.0) * Δt * du[I]
         end
     else
-        # Use simple upwind scheme for debugging
-        upwind_update_3D!(u, v, weno, nx, ny, nz, Δx_, Δy_, Δz_, Δt)
+        # Material upwinding uses the same prepared cell-centred staggered
+        # velocity as the WENO material operator.
+        vupwind = is_conservative(form) ? v : prepare_velocity!(weno, v)
+        upwind_update_3D!(u, vupwind, weno, nx, ny, nz, Δx_, Δy_, Δz_, Δt)
     end
 
     return nothing

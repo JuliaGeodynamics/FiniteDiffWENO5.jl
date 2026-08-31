@@ -10,9 +10,9 @@ struct NonConservativeForm <: AbstractAdvectionForm end
 @inline is_conservative(::ConservativeForm) = true
 @inline is_conservative(::NonConservativeForm) = false
 
-"""Whether `upwind_mode` is implemented for a form/layout combination."""
+"""Whether the first-order debug upwind operator supports a form/layout pair."""
 @inline supports_upwind_mode(form::AbstractAdvectionForm, stag::Bool) =
-    (is_conservative(form) && stag) || (!is_conservative(form) && !stag)
+    (is_conservative(form) && stag) || !is_conservative(form)
 
 """Validate opposite boundary pairs and return periodicity by velocity direction."""
 function velocity_periodicity(boundary, names)
@@ -58,8 +58,8 @@ function validate_scalar_options(form::AbstractAdvectionForm, stag::Bool, lim_ZS
     upwind_mode && !supports_upwind_mode(form, stag) &&
         throw(
         ArgumentError(
-            "upwind_mode=true supports only form=:conservative, stag=true or " *
-                "form=:nonconservative, stag=false",
+            "upwind_mode=true supports form=:conservative only with stag=true; " *
+                "form=:nonconservative supports either velocity layout",
         )
     )
     return nothing

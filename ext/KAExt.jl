@@ -205,13 +205,12 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x,), <:Tuple{<:AbstractArray{<:Real
 
     nx = size(u, 1)
     Δx_ = inv(Δx)
+    conservative = FiniteDiffWENO5.is_conservative(form)
 
     if !upwind_mode
         # Prepare the staggered velocity once for all three RK stages, exactly as
         # the CPU path does, so both backends evaluate the same operator.
         vcell = prepare_velocity_KA_1D!(weno, v, nx, backend)
-        conservative = FiniteDiffWENO5.is_conservative(form)
-
         kernel_flux_1D = WENO_flux_KA_1D(backend)
         kernel_semi_discretisation_1D = WENO_semi_discretisation_weno5_KA_1D!(backend)
         kernel_cons_flux = WENO_conservative_flux_KA_1D!(backend)
@@ -245,8 +244,11 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x,), <:Tuple{<:AbstractArray{<:Real
         u .= @muladd inv(3.0) .* u .+ 2.0 / 3.0 .* ut .- 2.0 / 3.0 .* Δt .* du
     else
         kernel_upwind = upwind_update_KA_1D!(backend)
-
-        kernel_upwind(u, v, nx, Δx_, Δt, stag, boundary, nothing, Offset0, ndrange = length(u))
+        vupwind = conservative ? v : prepare_velocity_KA_1D!(weno, v, nx, backend)
+        kernel_upwind(
+            u, vupwind, nx, Δx_, Δt, stag && conservative, boundary,
+            nothing, Offset0, ndrange = length(u),
+        )
 
     end
 
@@ -289,6 +291,7 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArra
     ny = size(u, 2)
     Δx_ = inv(Δx)
     Δy_ = inv(Δy)
+    conservative = FiniteDiffWENO5.is_conservative(form)
 
     if !upwind_mode
         flx_l = size(fl.x)
@@ -296,8 +299,6 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArra
         du_l = size(du)
 
         vcell = prepare_velocity_KA_2D!(weno, v, nx, ny, backend)
-        conservative = FiniteDiffWENO5.is_conservative(form)
-
         kernel_flux_2D_x = WENO_flux_KA_2D_x(backend)
         kernel_flux_2D_y = WENO_flux_KA_2D_y(backend)
         kernel_semi_discretisation_2D = WENO_semi_discretisation_weno5_KA_2D!(backend)
@@ -335,8 +336,11 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArra
         u_l = size(u)
 
         kernel_upwind = upwind_update_KA_2D!(backend)
-
-        kernel_upwind(u, v, nx, ny, Δx_, Δy_, Δt, stag, boundary, nothing, Offset0, ndrange = u_l)
+        vupwind = conservative ? v : prepare_velocity_KA_2D!(weno, v, nx, ny, backend)
+        kernel_upwind(
+            u, vupwind, nx, ny, Δx_, Δy_, Δt, stag && conservative, boundary,
+            nothing, Offset0, ndrange = u_l,
+        )
     end
 
     return nothing
@@ -380,6 +384,7 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstract
     Δz_ = inv(Δz)
 
     (; ut, du, fl, fr, stag, lim_ZS, boundary, χ, γ, ζ, ϵ, upwind_mode, form) = weno
+    conservative = FiniteDiffWENO5.is_conservative(form)
 
     if !upwind_mode
 
@@ -389,8 +394,6 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstract
         du_l = size(du)
 
         vcell = prepare_velocity_KA_3D!(weno, v, nx, ny, nz, backend)
-        conservative = FiniteDiffWENO5.is_conservative(form)
-
         kernel_flux_3D_x = WENO_flux_KA_3D_x(backend)
         kernel_flux_3D_y = WENO_flux_KA_3D_y(backend)
         kernel_flux_3D_z = WENO_flux_KA_3D_z(backend)
@@ -433,8 +436,11 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstract
         u_l = size(u)
 
         kernel_upwind = upwind_update_KA_3D!(backend)
-
-        kernel_upwind(u, v, nx, ny, nz, Δx_, Δy_, Δz_, Δt, stag, boundary, nothing, Offset0, ndrange = u_l)
+        vupwind = conservative ? v : prepare_velocity_KA_3D!(weno, v, nx, ny, nz, backend)
+        kernel_upwind(
+            u, vupwind, nx, ny, nz, Δx_, Δy_, Δz_, Δt, stag && conservative, boundary,
+            nothing, Offset0, ndrange = u_l,
+        )
 
     end
 
