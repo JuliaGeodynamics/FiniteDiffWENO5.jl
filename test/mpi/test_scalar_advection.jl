@@ -34,7 +34,7 @@ end
 @testset "distributed scalar WENO_step!" begin
 
     @testset "1D bit-for-bit: $bk, $form, stag=false" for bk in (:extrapolate, :periodic),
-        form in (:nonconservative, :conservative)
+            form in (:nonconservative, :conservative)
 
         n = 40
         halo = 3
@@ -61,7 +61,7 @@ end
     end
 
     @testset "2D bit-for-bit: $bk, $form, stag=false" for bk in (:extrapolate, :periodic),
-        form in (:nonconservative, :conservative)
+            form in (:nonconservative, :conservative)
 
         nx, ny = 24, 16
         halo = 3
@@ -230,8 +230,10 @@ end
     periodic = (true, py, true)
     topo = weno_cartesian_topology(dims; comm, dims = (nprocs, 1, 1), periodic)
     boundary = ntuple(f -> periodic[(f + 1) ÷ 2] ? PeriodicBC() : ExtrapolateBC(), 6)
-    reference = [1 + 0.2sinpi(2i / dims[1]) * cospi(2j / dims[2]) + 0.1sinpi(2k / dims[3])
-                 for i in 1:dims[1], j in 1:dims[2], k in 1:dims[3]]
+    reference = [
+        1 + 0.2sinpi(2i / dims[1]) * cospi(2j / dims[2]) + 0.1sinpi(2k / dims[3])
+            for i in 1:dims[1], j in 1:dims[2], k in 1:dims[3]
+    ]
     velocity = (x = reference .+ 0.5, y = reference .- 0.3, z = reference .+ 0.2)
     serial = WENOScheme(reference; boundary, form = :conservative, multithreading = false)
     local_state = allocate_weno_field(topo)

@@ -128,7 +128,7 @@ gcenter_exact(gi, n) = sinpi(2 * (gi - 0.5) / n) # exact cell-centre value of si
     end
 
     @testset "2-rank scalar WENO_step! with stag=true matches serial bit-for-bit ($form, $bk)" for form in (:nonconservative, :conservative),
-        bk in (:extrapolate, :periodic)
+            bk in (:extrapolate, :periodic)
 
         if nprocs in (2, 4)
             n = 40

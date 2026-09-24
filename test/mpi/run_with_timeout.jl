@@ -28,7 +28,7 @@ function main(args)
         println(stderr, "run_with_timeout: TIMED OUT after $(timeout)s")
         exit(124) # conventional timeout exit code
     end
-    exit(proc.exitcode)
+    return exit(proc.exitcode)
 end
 
 main(ARGS)

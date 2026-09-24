@@ -139,7 +139,7 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
     end
 
     @testset "1D single-operator parity: $bk, stag=$stag, $form" for bk in (:extrapolate, :periodic),
-        stag in (false, true), form in (:nonconservative, :conservative)
+            stag in (false, true), form in (:nonconservative, :conservative)
 
         parity_1d(bk, stag, form)
     end
@@ -218,7 +218,8 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
         u_p .= u_large[(offset - halo + 1):(offset + n_owned + halo)]
         vcell_p = (; x = vcell_large.x[(offset - halo + 1):(offset + n_owned + halo)])
 
-        weno_p = padded_weno_scheme(zeros(n_owned + 2halo), (halo,); boundary = (ProcessBC(), ProcessBC()),
+        weno_p = padded_weno_scheme(
+            zeros(n_owned + 2halo), (halo,); boundary = (ProcessBC(), ProcessBC()),
             form = :nonconservative, stag = false, multithreading = false,
         )
         du_p = zeros(n_owned + 2halo)
@@ -248,7 +249,8 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
         )
 
         boundary_p = (ProcessBC(), ProcessBC(), ExtrapolateBC(), ExtrapolateBC())
-        weno_p = padded_weno_scheme(zeros(nx_owned + 2halo, ny), (halo, 0); boundary = boundary_p,
+        weno_p = padded_weno_scheme(
+            zeros(nx_owned + 2halo, ny), (halo, 0); boundary = boundary_p,
             form = :nonconservative, stag = false, multithreading = false,
         )
         du_p = zeros(nx_owned + 2halo, ny)
@@ -277,7 +279,8 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
         extent = PaddedExtent{3}((n, n, n), (halo, halo, halo), (n, n, n), (false, false, false), :cell)
         fill_physical_ghosts!(c0, extent, boundary)
 
-        weno_p = padded_weno_scheme(zeros(n + 2halo, n + 2halo, n + 2halo), (halo, halo, halo); boundary, form = :nonconservative, stag = true, multithreading = false,
+        weno_p = padded_weno_scheme(
+            zeros(n + 2halo, n + 2halo, n + 2halo), (halo, halo, halo); boundary, form = :nonconservative, stag = true, multithreading = false,
         )
 
         vfx_p = zeros(n + 2halo + 1, n + 2halo, n + 2halo)
@@ -342,7 +345,8 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
         n = 10
         halo = 3
         boundary = (PrescribedInflowBC(1.0), ExtrapolateBC())
-        weno_p = padded_weno_scheme(zeros(n + 2halo), (halo,); boundary, form = :nonconservative,
+        weno_p = padded_weno_scheme(
+            zeros(n + 2halo), (halo,); boundary, form = :nonconservative,
             stag = false, multithreading = false,
         )
         u_p = zeros(n + 2halo)
@@ -373,18 +377,24 @@ end
     n, h = 40, 3
     u = [1 + 0.3sinpi(2 * (i - 0.5) / n) + 0.15cospi(4 * (i - 0.5) / n) for i in 1:n]
     v = u .+ 0.5
-    serial = WENOScheme(u; boundary = (PeriodicBC(), PeriodicBC()),
-                        form = :conservative, multithreading = false)
+    serial = WENOScheme(
+        u; boundary = (PeriodicBC(), PeriodicBC()),
+        form = :conservative, multithreading = false
+    )
     process = ProcessBC(PeriodicBC())
-    padded = FiniteDiffWENO5.padded_weno_scheme(zeros(n + 2h), (h,);
-        boundary = (process, process), form = :conservative, multithreading = false)
+    padded = FiniteDiffWENO5.padded_weno_scheme(
+        zeros(n + 2h), (h,);
+        boundary = (process, process), form = :conservative, multithreading = false
+    )
     up = [u[mod1(i - h, n)] for i in 1:(n + 2h)]
     vp = [v[mod1(i - h, n)] for i in 1:(n + 2h)]
     alpha = FiniteDiffWENO5.lf_speed(v)
     FiniteDiffWENO5.conservative_semi_discretisation_weno5!(
-        serial.du, u, (; x = v), serial, n, Float64(n), alpha)
+        serial.du, u, (; x = v), serial, n, Float64(n), alpha
+    )
     FiniteDiffWENO5.conservative_semi_discretisation_weno5!(
-        padded.du, up, (; x = vp), padded, n + 2h, Float64(n), alpha)
+        padded.du, up, (; x = vp), padded, n + 2h, Float64(n), alpha
+    )
     @test serial.fl.x == padded.fl.x[(h + 1):(h + n + 1)]
     @test serial.fr.x == padded.fr.x[(h + 1):(h + n + 1)]
     @test serial.du == padded.du[(h + 1):(h + n)]

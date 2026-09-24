@@ -17,5 +17,5 @@ using FiniteDiffWENO5: SerialTopology, NoTopology, owned_window
     end
     v = (fill(2.0, 8), fill(3.0, 8))
     @test weno_cfl_dt(NoTopology(), v, (1.0, 2.0), 0.7) ==
-          weno_cfl_dt(NoTopology(), (; x = v[1], y = v[2]), (1.0, 2.0), 0.7)
+        weno_cfl_dt(NoTopology(), (; x = v[1], y = v[2]), (1.0, 2.0), 0.7)
 end

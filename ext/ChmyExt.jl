@@ -545,9 +545,11 @@ function WENO_step!(u::T_field, v::Velocity1D, weno::FiniteDiffWENO5.WENOScheme,
         interior(u) .= @muladd inv(3.0) .* interior(u) .+ 2.0 / 3.0 .* interior(ut) .- 2.0 / 3.0 .* Δt .* interior(du)
     else
         vupwind = conservative ? v : prepare_velocity_chmy_1D!(weno, v, nx, grid, arch, launch)
-        launch(arch, grid, upwind_update_KA_1D! => (
-            u, vupwind, nx, Δx_, Δt, stag && conservative, boundary, grid,
-        ))
+        launch(
+            arch, grid, upwind_update_KA_1D! => (
+                u, vupwind, nx, Δx_, Δt, stag && conservative, boundary, grid,
+            )
+        )
     end
 
     return nothing
@@ -627,9 +629,11 @@ function WENO_step!(u::T_field, v::Velocity2D, weno::FiniteDiffWENO5.WENOScheme,
         interior(u) .= @muladd inv(3.0) .* interior(u) .+ 2.0 / 3.0 .* interior(ut) .- 2.0 / 3.0 .* Δt .* interior(du)
     else
         vupwind = conservative ? v : prepare_velocity_chmy_2D!(weno, v, nx, ny, grid, arch, launch)
-        launch(arch, grid, upwind_update_KA_2D! => (
-            u, vupwind, nx, ny, Δx_, Δy_, Δt, stag && conservative, boundary, grid,
-        ))
+        launch(
+            arch, grid, upwind_update_KA_2D! => (
+                u, vupwind, nx, ny, Δx_, Δy_, Δt, stag && conservative, boundary, grid,
+            )
+        )
     end
 
     return nothing
@@ -717,9 +721,11 @@ function WENO_step!(u::T_field, v::Velocity3D, weno::FiniteDiffWENO5.WENOScheme,
         interior(u) .= @muladd inv(3.0) .* interior(u) .+ 2.0 / 3.0 .* interior(ut) .- 2.0 / 3.0 .* Δt .* interior(du)
     else
         vupwind = conservative ? v : prepare_velocity_chmy_3D!(weno, v, nx, ny, nz, grid, arch, launch)
-        launch(arch, grid, upwind_update_KA_3D! => (
-            u, vupwind, nx, ny, nz, Δx_, Δy_, Δz_, Δt, stag && conservative, boundary, grid,
-        ))
+        launch(
+            arch, grid, upwind_update_KA_3D! => (
+                u, vupwind, nx, ny, nz, Δx_, Δy_, Δz_, Δt, stag && conservative, boundary, grid,
+            )
+        )
     end
 
     return nothing

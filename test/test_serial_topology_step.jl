@@ -18,7 +18,7 @@ end
 @testset "SerialTopology reproduces serial bit-for-bit" begin
 
     @testset "1D: $bk, stag=$stag, $form" for bk in (:extrapolate, :periodic, :inflow),
-        stag in (false, true), form in (:nonconservative, :conservative)
+            stag in (false, true), form in (:nonconservative, :conservative)
 
         n = 20
         halo = 3
@@ -51,7 +51,7 @@ end
     end
 
     @testset "2D: $bk, stag=$stag, $form" for bk in (:extrapolate, :periodic),
-        stag in (false, true), form in (:nonconservative, :conservative)
+            stag in (false, true), form in (:nonconservative, :conservative)
 
         nx, ny = 12, 10
         halo = 3
