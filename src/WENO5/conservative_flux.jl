@@ -35,8 +35,10 @@ end
 @inline lf_speed(v, reduce_abs) = reduce_abs(abs, v)
 
 """Directional global Lax--Friedrichs speeds, computed once per velocity field."""
-@inline lf_speeds(form::AbstractAdvectionForm, velocity::NamedTuple) =
-    is_conservative(form) ? map(lf_speed, velocity) : nothing
+@inline function lf_speeds(form::AbstractAdvectionForm, velocity::NamedTuple{names}) where {names}
+    is_conservative(form) || return nothing
+    return NamedTuple{names}(ntuple(d -> lf_speed(getfield(velocity, d)), Val(length(names))))
+end
 
 # `PrescribedInflowBC` prescribes an exterior transported *state*. The
 # non-conservative path applies that state directly to a reconstructed `u`, but a
@@ -50,18 +52,27 @@ end
 # which is exactly `f⁺(u_L) + f⁻(u_R)` — the same split the interior uses, at first
 # order. Accuracy at the boundary is therefore first order by construction; the
 # plan documents that no high-order inflow closure is claimed here.
-function apply_conservative_inflow_1d!(fl, fr, u, v, α, boundary)
+# Physical face (into the flux arrays, one more entry than the cell count
+# along their own axis) and physical edge (into the cell-centred `u`/`v`,
+# whose exterior state the boundary flux is built from) — both at
+# `extent.pad`/`extent.owned`, `begin`/`end` when unpadded, exactly like the
+# scalar installers in `boundaries.jl`.
+function apply_conservative_inflow_1d!(fl, fr, u, v, α, boundary, extent::PaddedExtent{1})
     bL, bR = boundary[1], boundary[2]
+    lo_face = extent.pad[1] + 1
+    hi_face = extent.pad[1] + extent.owned[1] + 1
+    lo_cell = extent.pad[1] + 1
+    hi_cell = extent.pad[1] + extent.owned[1]
     if bL isa PrescribedInflowBC
         @inbounds begin
-            fl.x[begin] = lf_split_plus(inflow_value(bL), v[begin], α)
-            fr.x[begin] = lf_split_minus(u[begin], v[begin], α)
+            fl.x[lo_face] = lf_split_plus(inflow_value(bL), v[lo_cell], α)
+            fr.x[lo_face] = lf_split_minus(u[lo_cell], v[lo_cell], α)
         end
     end
     if bR isa PrescribedInflowBC
         @inbounds begin
-            fl.x[end] = lf_split_plus(u[end], v[end], α)
-            fr.x[end] = lf_split_minus(inflow_value(bR), v[end], α)
+            fl.x[hi_face] = lf_split_plus(u[hi_cell], v[hi_cell], α)
+            fr.x[hi_face] = lf_split_minus(inflow_value(bR), v[hi_cell], α)
         end
     end
     return nothing
@@ -69,72 +80,87 @@ end
 
 # Higher-dimensional counterparts. Tangential indices follow the same convention
 # as `apply_x_lower_inflow!` and friends in `boundaries.jl`: the remaining axes in
-# their natural order.
-function apply_conservative_inflow_2d!(fl, fr, u, vx, vy, αx, αy, boundary)
+# their natural order, looped over the owned window and offset into the
+# (owned-sized) inflow value array by the tangential pad.
+function apply_conservative_inflow_2d!(fl, fr, u, vx, vy, αx, αy, boundary, extent::PaddedExtent{2})
     bLx, bRx, bLy, bRy = boundary
+    px, py = extent.pad[1], extent.pad[2]
+    ox, oy = extent.owned[1], extent.owned[2]
     if bLx isa PrescribedInflowBC
-        @inbounds for j in axes(fl.x, 2)
-            fl.x[begin, j] = lf_split_plus(inflow_value(bLx, j), vx[begin, j], αx)
-            fr.x[begin, j] = lf_split_minus(u[begin, j], vx[begin, j], αx)
+        face, cell = px + 1, px + 1
+        @inbounds for j in (py + 1):(py + oy)
+            fl.x[face, j] = lf_split_plus(inflow_value(bLx, j - py), vx[cell, j], αx)
+            fr.x[face, j] = lf_split_minus(u[cell, j], vx[cell, j], αx)
         end
     end
     if bRx isa PrescribedInflowBC
-        @inbounds for j in axes(fr.x, 2)
-            fl.x[end, j] = lf_split_plus(u[end, j], vx[end, j], αx)
-            fr.x[end, j] = lf_split_minus(inflow_value(bRx, j), vx[end, j], αx)
+        face, cell = px + ox + 1, px + ox
+        @inbounds for j in (py + 1):(py + oy)
+            fl.x[face, j] = lf_split_plus(u[cell, j], vx[cell, j], αx)
+            fr.x[face, j] = lf_split_minus(inflow_value(bRx, j - py), vx[cell, j], αx)
         end
     end
     if bLy isa PrescribedInflowBC
-        @inbounds for i in axes(fl.y, 1)
-            fl.y[i, begin] = lf_split_plus(inflow_value(bLy, i), vy[i, begin], αy)
-            fr.y[i, begin] = lf_split_minus(u[i, begin], vy[i, begin], αy)
+        face, cell = py + 1, py + 1
+        @inbounds for i in (px + 1):(px + ox)
+            fl.y[i, face] = lf_split_plus(inflow_value(bLy, i - px), vy[i, cell], αy)
+            fr.y[i, face] = lf_split_minus(u[i, cell], vy[i, cell], αy)
         end
     end
     if bRy isa PrescribedInflowBC
-        @inbounds for i in axes(fr.y, 1)
-            fl.y[i, end] = lf_split_plus(u[i, end], vy[i, end], αy)
-            fr.y[i, end] = lf_split_minus(inflow_value(bRy, i), vy[i, end], αy)
+        face, cell = py + oy + 1, py + oy
+        @inbounds for i in (px + 1):(px + ox)
+            fl.y[i, face] = lf_split_plus(u[i, cell], vy[i, cell], αy)
+            fr.y[i, face] = lf_split_minus(inflow_value(bRy, i - px), vy[i, cell], αy)
         end
     end
     return nothing
 end
 
-function apply_conservative_inflow_3d!(fl, fr, u, vx, vy, vz, αx, αy, αz, boundary)
+function apply_conservative_inflow_3d!(fl, fr, u, vx, vy, vz, αx, αy, αz, boundary, extent::PaddedExtent{3})
     bLx, bRx, bLy, bRy, bLz, bRz = boundary
+    px, py, pz = extent.pad[1], extent.pad[2], extent.pad[3]
+    ox, oy, oz = extent.owned[1], extent.owned[2], extent.owned[3]
     if bLx isa PrescribedInflowBC
-        @inbounds for k in axes(fl.x, 3), j in axes(fl.x, 2)
-            fl.x[begin, j, k] = lf_split_plus(inflow_value(bLx, j, k), vx[begin, j, k], αx)
-            fr.x[begin, j, k] = lf_split_minus(u[begin, j, k], vx[begin, j, k], αx)
+        face, cell = px + 1, px + 1
+        @inbounds for k in (pz + 1):(pz + oz), j in (py + 1):(py + oy)
+            fl.x[face, j, k] = lf_split_plus(inflow_value(bLx, j - py, k - pz), vx[cell, j, k], αx)
+            fr.x[face, j, k] = lf_split_minus(u[cell, j, k], vx[cell, j, k], αx)
         end
     end
     if bRx isa PrescribedInflowBC
-        @inbounds for k in axes(fr.x, 3), j in axes(fr.x, 2)
-            fl.x[end, j, k] = lf_split_plus(u[end, j, k], vx[end, j, k], αx)
-            fr.x[end, j, k] = lf_split_minus(inflow_value(bRx, j, k), vx[end, j, k], αx)
+        face, cell = px + ox + 1, px + ox
+        @inbounds for k in (pz + 1):(pz + oz), j in (py + 1):(py + oy)
+            fl.x[face, j, k] = lf_split_plus(u[cell, j, k], vx[cell, j, k], αx)
+            fr.x[face, j, k] = lf_split_minus(inflow_value(bRx, j - py, k - pz), vx[cell, j, k], αx)
         end
     end
     if bLy isa PrescribedInflowBC
-        @inbounds for k in axes(fl.y, 3), i in axes(fl.y, 1)
-            fl.y[i, begin, k] = lf_split_plus(inflow_value(bLy, i, k), vy[i, begin, k], αy)
-            fr.y[i, begin, k] = lf_split_minus(u[i, begin, k], vy[i, begin, k], αy)
+        face, cell = py + 1, py + 1
+        @inbounds for k in (pz + 1):(pz + oz), i in (px + 1):(px + ox)
+            fl.y[i, face, k] = lf_split_plus(inflow_value(bLy, i - px, k - pz), vy[i, cell, k], αy)
+            fr.y[i, face, k] = lf_split_minus(u[i, cell, k], vy[i, cell, k], αy)
         end
     end
     if bRy isa PrescribedInflowBC
-        @inbounds for k in axes(fr.y, 3), i in axes(fr.y, 1)
-            fl.y[i, end, k] = lf_split_plus(u[i, end, k], vy[i, end, k], αy)
-            fr.y[i, end, k] = lf_split_minus(inflow_value(bRy, i, k), vy[i, end, k], αy)
+        face, cell = py + oy + 1, py + oy
+        @inbounds for k in (pz + 1):(pz + oz), i in (px + 1):(px + ox)
+            fl.y[i, face, k] = lf_split_plus(u[i, cell, k], vy[i, cell, k], αy)
+            fr.y[i, face, k] = lf_split_minus(inflow_value(bRy, i - px, k - pz), vy[i, cell, k], αy)
         end
     end
     if bLz isa PrescribedInflowBC
-        @inbounds for j in axes(fl.z, 2), i in axes(fl.z, 1)
-            fl.z[i, j, begin] = lf_split_plus(inflow_value(bLz, i, j), vz[i, j, begin], αz)
-            fr.z[i, j, begin] = lf_split_minus(u[i, j, begin], vz[i, j, begin], αz)
+        face, cell = pz + 1, pz + 1
+        @inbounds for j in (py + 1):(py + oy), i in (px + 1):(px + ox)
+            fl.z[i, j, face] = lf_split_plus(inflow_value(bLz, i - px, j - py), vz[i, j, cell], αz)
+            fr.z[i, j, face] = lf_split_minus(u[i, j, cell], vz[i, j, cell], αz)
         end
     end
     if bRz isa PrescribedInflowBC
-        @inbounds for j in axes(fr.z, 2), i in axes(fr.z, 1)
-            fl.z[i, j, end] = lf_split_plus(u[i, j, end], vz[i, j, end], αz)
-            fr.z[i, j, end] = lf_split_minus(inflow_value(bRz, i, j), vz[i, j, end], αz)
+        face, cell = pz + oz + 1, pz + oz
+        @inbounds for j in (py + 1):(py + oy), i in (px + 1):(px + ox)
+            fl.z[i, j, face] = lf_split_plus(u[i, j, cell], vz[i, j, cell], αz)
+            fr.z[i, j, face] = lf_split_minus(inflow_value(bRz, i - px, j - py), vz[i, j, cell], αz)
         end
     end
     return nothing
@@ -150,7 +176,7 @@ before this call.
 function conservative_semi_discretisation_weno5!(
         du::AbstractVector, u::AbstractVector, vcell, weno::WENOScheme, nx, Δx_, α,
     )
-    (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading) = weno
+    (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading, extent) = weno
     v = vcell.x
     size(v) == size(u) || throw(
         DimensionMismatch(
@@ -181,7 +207,7 @@ function conservative_semi_discretisation_weno5!(
         )
     end
 
-    apply_conservative_inflow_1d!(fl, fr, u, v, α, boundary)
+    apply_conservative_inflow_1d!(fl, fr, u, v, α, boundary, extent)
 
     @inbounds @maybe_threads multithreading for i in eachindex(du)
         du[i] = ((fl.x[i + 1] + fr.x[i + 1]) - (fl.x[i] + fr.x[i])) * Δx_
@@ -198,7 +224,7 @@ Lax-Friedrichs constant, as the directional fluxes are differenced independently
 function conservative_semi_discretisation_weno5!(
         du::AbstractMatrix, u::AbstractMatrix, vcell, weno::WENOScheme, nx, ny, Δx_, Δy_, αx, αy,
     )
-    (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading) = weno
+    (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading, extent) = weno
     vx, vy = vcell.x, vcell.y
     (size(vx) == size(u) && size(vy) == size(u)) || throw(
         DimensionMismatch(
@@ -250,7 +276,7 @@ function conservative_semi_discretisation_weno5!(
         )
     end
 
-    apply_conservative_inflow_2d!(fl, fr, u, vx, vy, αx, αy, boundary)
+    apply_conservative_inflow_2d!(fl, fr, u, vx, vy, αx, αy, boundary, extent)
 
     @inbounds @maybe_threads multithreading for I in CartesianIndices(du)
         i, j = Tuple(I)
@@ -269,7 +295,7 @@ function conservative_semi_discretisation_weno5!(
         du::AbstractArray{<:Real, 3}, u::AbstractArray{<:Real, 3}, vcell, weno::WENOScheme,
         nx, ny, nz, Δx_, Δy_, Δz_, αx, αy, αz,
     )
-    (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading) = weno
+    (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading, extent) = weno
     vx, vy, vz = vcell.x, vcell.y, vcell.z
     all(w -> size(w) == size(u), (vx, vy, vz)) || throw(
         DimensionMismatch(
@@ -354,7 +380,7 @@ function conservative_semi_discretisation_weno5!(
         )
     end
 
-    apply_conservative_inflow_3d!(fl, fr, u, vx, vy, vz, αx, αy, αz, boundary)
+    apply_conservative_inflow_3d!(fl, fr, u, vx, vy, vz, αx, αy, αz, boundary, extent)
 
     @inbounds @maybe_threads multithreading for I in CartesianIndices(du)
         i, j, k = Tuple(I)

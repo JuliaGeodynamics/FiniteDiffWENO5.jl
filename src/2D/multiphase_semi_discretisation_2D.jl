@@ -1,5 +1,5 @@
 function multiphase_WENO_flux!(state, scheme::MultiphaseWENOScheme{T, NP}, nx, ny) where {T, NP}
-    (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading) = scheme
+    (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading, extent) = scheme
     bLx, bRx, bLy, bRy = boundary
     valNP = Val(NP)
 
@@ -65,7 +65,7 @@ function multiphase_WENO_flux!(state, scheme::MultiphaseWENOScheme{T, NP}, nx, n
         end
     end
 
-    apply_multiphase_inflow_boundaries!(fl, fr, boundary)
+    apply_multiphase_inflow_boundaries!(fl, fr, boundary, extent)
     return nothing
 end
 

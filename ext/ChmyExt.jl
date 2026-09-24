@@ -99,11 +99,14 @@ function WENOScheme(
 
     TFlux = typeof(fl)
     TArray = typeof(du)
+    extent = FiniteDiffWENO5.default_extent(sizes, FiniteDiffWENO5.default_global_periodic(boundary, N))
 
-    return WENOScheme{T, TArray, TFlux, typeof(vcenter), typeof(vperiodic), typeof(form_tag), typeof(boundary)}(
+    topology = FiniteDiffWENO5.NoTopology() # Chmy schemes use unpadded arrays
+
+    return WENOScheme{T, TArray, TFlux, typeof(vcenter), typeof(vperiodic), typeof(form_tag), typeof(boundary), typeof(extent), typeof(topology)}(
         stag = stag, form = form_tag, boundary = boundary, multithreading = multithreading,
         lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut, vcenter = vcenter,
-        vperiodic = vperiodic,
+        vperiodic = vperiodic, extent = extent, topology = topology,
         upwind_mode = upwind_mode,
     )
 end
@@ -162,12 +165,16 @@ function MultiphaseWENOScheme(
         NamedTuple{labels}(ntuple(_ -> Field(backend, grid, Center(), T), direction_count)) :
         nothing
     vperiodic = stag ? FiniteDiffWENO5.velocity_periodicity(boundary, labels) : nothing
+    extent = FiniteDiffWENO5.default_extent(sizes, FiniteDiffWENO5.default_global_periodic(boundary, N))
+    topology = FiniteDiffWENO5.NoTopology() # Chmy schemes use unpadded arrays
 
     return MultiphaseWENOScheme{
         T, NP, typeof(du), typeof(fl), typeof(vcenter), typeof(vperiodic), typeof(boundary),
+        typeof(extent), typeof(topology),
     }(
         stag = stag, boundary = boundary, multithreading = multithreading,
         fl = fl, fr = fr, du = du, ut = ut, vcenter = vcenter, vperiodic = vperiodic,
+        extent = extent, topology = topology,
     )
 end
 
@@ -321,6 +328,12 @@ function WENO_step!(
     end
     @assert get_backend(v.x) == backend
 
+    scheme.topology isa FiniteDiffWENO5.NoTopology || throw(
+        ArgumentError(
+            "Chmy multiphase WENO_step! does not support a distributed topology " *
+                "(GPU+MPI is unsupported)"
+        )
+    )
     launch = Launcher(arch, grid)
     (; fl, fr, ut, du, boundary, χ, γ, ζ, ϵ) = scheme
     nx = grid.axes[1].length
@@ -366,6 +379,12 @@ function WENO_step!(
     @assert get_backend(v.x) == backend
     @assert get_backend(v.y) == backend
 
+    scheme.topology isa FiniteDiffWENO5.NoTopology || throw(
+        ArgumentError(
+            "Chmy multiphase WENO_step! does not support a distributed topology " *
+                "(GPU+MPI is unsupported)"
+        )
+    )
     launch = Launcher(arch, grid)
     (; fl, fr, ut, du, boundary, χ, γ, ζ, ϵ) = scheme
     nx, ny = map(axis -> axis.length, grid.axes)
@@ -416,6 +435,12 @@ function WENO_step!(
     @assert get_backend(v.y) == backend
     @assert get_backend(v.z) == backend
 
+    scheme.topology isa FiniteDiffWENO5.NoTopology || throw(
+        ArgumentError(
+            "Chmy multiphase WENO_step! does not support a distributed topology " *
+                "(GPU+MPI is unsupported)"
+        )
+    )
     launch = Launcher(arch, grid)
     (; fl, fr, ut, du, boundary, χ, γ, ζ, ϵ) = scheme
     nx, ny, nz = map(axis -> axis.length, grid.axes)
@@ -479,6 +504,13 @@ function WENO_step!(u::T_field, v::Velocity1D, weno::FiniteDiffWENO5.WENOScheme,
     @assert get_backend(u) == get_backend(v.x)
 
     launch = Launcher(arch, grid)
+
+    weno.topology isa FiniteDiffWENO5.NoTopology || throw(
+        ArgumentError(
+            "Chmy WENO_step! does not support a distributed topology " *
+                "(GPU+MPI is unsupported)"
+        )
+    )
 
     #! do things here for halos and such for clusters for boundaries probably
 
@@ -549,6 +581,13 @@ function WENO_step!(u::T_field, v::Velocity2D, weno::FiniteDiffWENO5.WENOScheme,
     @assert get_backend(u) == get_backend(v.y)
 
     launch = Launcher(arch, grid)
+
+    weno.topology isa FiniteDiffWENO5.NoTopology || throw(
+        ArgumentError(
+            "Chmy WENO_step! does not support a distributed topology " *
+                "(GPU+MPI is unsupported)"
+        )
+    )
 
     #! do things here for halos and such for clusters for boundaries probably
 
@@ -627,6 +666,13 @@ function WENO_step!(u::T_field, v::Velocity3D, weno::FiniteDiffWENO5.WENOScheme,
     @assert get_backend(u) == get_backend(v.z)
 
     launch = Launcher(arch, grid)
+
+    weno.topology isa FiniteDiffWENO5.NoTopology || throw(
+        ArgumentError(
+            "Chmy WENO_step! does not support a distributed topology " *
+                "(GPU+MPI is unsupported)"
+        )
+    )
 
     #! do things here for halos and such for clusters for boundaries probably
 

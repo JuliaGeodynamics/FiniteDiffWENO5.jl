@@ -136,175 +136,217 @@ validation guarantees no other component kind reaches this function.
 # `PrescribedInflowBC` paired with a wrong-shaped buffer raises a `MethodError` instead of
 # silently doing nothing.
 
-const _NoInflowBC = Union{PeriodicBC, ExtrapolateBC}
+const _NoInflowBC = Union{PeriodicBC, ExtrapolateBC, ProcessBC}
 
-apply_multiphase_lower_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_upper_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_x_lower_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_x_upper_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_y_lower_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_y_upper_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_z_lower_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_z_upper_inflow!(flux, ::_NoInflowBC) = nothing
+apply_multiphase_lower_inflow!(flux, ::_NoInflowBC, extent) = nothing
+apply_multiphase_upper_inflow!(flux, ::_NoInflowBC, extent) = nothing
+apply_multiphase_x_lower_inflow!(flux, ::_NoInflowBC, extent) = nothing
+apply_multiphase_x_upper_inflow!(flux, ::_NoInflowBC, extent) = nothing
+apply_multiphase_y_lower_inflow!(flux, ::_NoInflowBC, extent) = nothing
+apply_multiphase_y_upper_inflow!(flux, ::_NoInflowBC, extent) = nothing
+apply_multiphase_z_lower_inflow!(flux, ::_NoInflowBC, extent) = nothing
+apply_multiphase_z_upper_inflow!(flux, ::_NoInflowBC, extent) = nothing
 
 function apply_multiphase_lower_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{1},
     ) where {M, A <: AbstractVector}
+    face = extent.pad[1] + 1
     for k in 1:(M + 1)
-        @inbounds flux[k][begin] = multiphase_inflow_value(bc, k)
+        @inbounds flux[k][face] = multiphase_inflow_value(bc, k)
     end
     return nothing
 end
 
 function apply_multiphase_upper_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{1},
     ) where {M, A <: AbstractVector}
+    face = extent.pad[1] + extent.owned[1] + 1
     for k in 1:(M + 1)
-        @inbounds flux[k][end] = multiphase_inflow_value(bc, k)
+        @inbounds flux[k][face] = multiphase_inflow_value(bc, k)
     end
     return nothing
 end
 
 function apply_multiphase_x_lower_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{2},
     ) where {M, A <: AbstractMatrix}
+    py = extent.pad[2]
+    face = extent.pad[1] + 1
     for k in 1:(M + 1)
         f = @inbounds flux[k]
-        @inbounds for j in axes(f, 2)
-            f[begin, j] = multiphase_inflow_value(bc, k, j)
+        @inbounds for j in (py + 1):(py + extent.owned[2])
+            f[face, j] = multiphase_inflow_value(bc, k, j - py)
         end
     end
     return nothing
 end
 
 function apply_multiphase_x_upper_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{2},
     ) where {M, A <: AbstractMatrix}
+    py = extent.pad[2]
+    face = extent.pad[1] + extent.owned[1] + 1
     for k in 1:(M + 1)
         f = @inbounds flux[k]
-        @inbounds for j in axes(f, 2)
-            f[end, j] = multiphase_inflow_value(bc, k, j)
+        @inbounds for j in (py + 1):(py + extent.owned[2])
+            f[face, j] = multiphase_inflow_value(bc, k, j - py)
         end
     end
     return nothing
 end
 
 function apply_multiphase_y_lower_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{2},
     ) where {M, A <: AbstractMatrix}
+    px = extent.pad[1]
+    face = extent.pad[2] + 1
     for k in 1:(M + 1)
         f = @inbounds flux[k]
-        @inbounds for i in axes(f, 1)
-            f[i, begin] = multiphase_inflow_value(bc, k, i)
+        @inbounds for i in (px + 1):(px + extent.owned[1])
+            f[i, face] = multiphase_inflow_value(bc, k, i - px)
         end
     end
     return nothing
 end
 
 function apply_multiphase_y_upper_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{2},
     ) where {M, A <: AbstractMatrix}
+    px = extent.pad[1]
+    face = extent.pad[2] + extent.owned[2] + 1
     for k in 1:(M + 1)
         f = @inbounds flux[k]
-        @inbounds for i in axes(f, 1)
-            f[i, end] = multiphase_inflow_value(bc, k, i)
+        @inbounds for i in (px + 1):(px + extent.owned[1])
+            f[i, face] = multiphase_inflow_value(bc, k, i - px)
         end
     end
     return nothing
 end
 
 function apply_multiphase_x_lower_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{3},
     ) where {M, A <: AbstractArray{<:Any, 3}}
+    py, pz = extent.pad[2], extent.pad[3]
+    face = extent.pad[1] + 1
     for k in 1:(M + 1)
         f = @inbounds flux[k]
-        @inbounds for m in axes(f, 3), j in axes(f, 2)
-            f[begin, j, m] = multiphase_inflow_value(bc, k, j, m)
+        @inbounds for m in (pz + 1):(pz + extent.owned[3]), j in (py + 1):(py + extent.owned[2])
+            f[face, j, m] = multiphase_inflow_value(bc, k, j - py, m - pz)
         end
     end
     return nothing
 end
 
 function apply_multiphase_x_upper_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{3},
     ) where {M, A <: AbstractArray{<:Any, 3}}
+    py, pz = extent.pad[2], extent.pad[3]
+    face = extent.pad[1] + extent.owned[1] + 1
     for k in 1:(M + 1)
         f = @inbounds flux[k]
-        @inbounds for m in axes(f, 3), j in axes(f, 2)
-            f[end, j, m] = multiphase_inflow_value(bc, k, j, m)
+        @inbounds for m in (pz + 1):(pz + extent.owned[3]), j in (py + 1):(py + extent.owned[2])
+            f[face, j, m] = multiphase_inflow_value(bc, k, j - py, m - pz)
         end
     end
     return nothing
 end
 
 function apply_multiphase_y_lower_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{3},
     ) where {M, A <: AbstractArray{<:Any, 3}}
+    px, pz = extent.pad[1], extent.pad[3]
+    face = extent.pad[2] + 1
     for k in 1:(M + 1)
         f = @inbounds flux[k]
-        @inbounds for m in axes(f, 3), i in axes(f, 1)
-            f[i, begin, m] = multiphase_inflow_value(bc, k, i, m)
+        @inbounds for m in (pz + 1):(pz + extent.owned[3]), i in (px + 1):(px + extent.owned[1])
+            f[i, face, m] = multiphase_inflow_value(bc, k, i - px, m - pz)
         end
     end
     return nothing
 end
 
 function apply_multiphase_y_upper_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{3},
     ) where {M, A <: AbstractArray{<:Any, 3}}
+    px, pz = extent.pad[1], extent.pad[3]
+    face = extent.pad[2] + extent.owned[2] + 1
     for k in 1:(M + 1)
         f = @inbounds flux[k]
-        @inbounds for m in axes(f, 3), i in axes(f, 1)
-            f[i, end, m] = multiphase_inflow_value(bc, k, i, m)
+        @inbounds for m in (pz + 1):(pz + extent.owned[3]), i in (px + 1):(px + extent.owned[1])
+            f[i, face, m] = multiphase_inflow_value(bc, k, i - px, m - pz)
         end
     end
     return nothing
 end
 
 function apply_multiphase_z_lower_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{3},
     ) where {M, A <: AbstractArray{<:Any, 3}}
+    px, py = extent.pad[1], extent.pad[2]
+    face = extent.pad[3] + 1
     for k in 1:(M + 1)
         f = @inbounds flux[k]
-        @inbounds for j in axes(f, 2), i in axes(f, 1)
-            f[i, j, begin] = multiphase_inflow_value(bc, k, i, j)
+        @inbounds for j in (py + 1):(py + extent.owned[2]), i in (px + 1):(px + extent.owned[1])
+            f[i, j, face] = multiphase_inflow_value(bc, k, i - px, j - py)
         end
     end
     return nothing
 end
 
 function apply_multiphase_z_upper_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{3},
     ) where {M, A <: AbstractArray{<:Any, 3}}
+    px, py = extent.pad[1], extent.pad[2]
+    face = extent.pad[3] + extent.owned[3] + 1
     for k in 1:(M + 1)
         f = @inbounds flux[k]
-        @inbounds for j in axes(f, 2), i in axes(f, 1)
-            f[i, j, end] = multiphase_inflow_value(bc, k, i, j)
+        @inbounds for j in (py + 1):(py + extent.owned[2]), i in (px + 1):(px + extent.owned[1])
+            f[i, j, face] = multiphase_inflow_value(bc, k, i - px, j - py)
         end
     end
     return nothing
 end
 
-function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x,)}, fr, boundary)
-    apply_multiphase_lower_inflow!(fl.x, boundary[1])
-    apply_multiphase_upper_inflow!(fr.x, boundary[2])
+function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x,)}, fr, boundary, extent)
+    apply_multiphase_lower_inflow!(fl.x, boundary[1], extent)
+    apply_multiphase_upper_inflow!(fr.x, boundary[2], extent)
     return nothing
+end
+
+function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x, :y)}, fr, boundary, extent)
+    apply_multiphase_x_lower_inflow!(fl.x, boundary[1], extent)
+    apply_multiphase_x_upper_inflow!(fr.x, boundary[2], extent)
+    apply_multiphase_y_lower_inflow!(fl.y, boundary[3], extent)
+    apply_multiphase_y_upper_inflow!(fr.y, boundary[4], extent)
+    return nothing
+end
+
+function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x, :y, :z)}, fr, boundary, extent)
+    apply_multiphase_x_lower_inflow!(fl.x, boundary[1], extent)
+    apply_multiphase_x_upper_inflow!(fr.x, boundary[2], extent)
+    apply_multiphase_y_lower_inflow!(fl.y, boundary[3], extent)
+    apply_multiphase_y_upper_inflow!(fr.y, boundary[4], extent)
+    apply_multiphase_z_lower_inflow!(fl.z, boundary[5], extent)
+    apply_multiphase_z_upper_inflow!(fr.z, boundary[6], extent)
+    return nothing
+end
+
+# Three-argument overloads infer an unpadded extent from flux buffer sizes.
+# Each flux axis has one more face than cells.
+function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x,)}, fr, boundary)
+    n = size(fl.x[1], 1) - 1
+    return apply_multiphase_inflow_boundaries!(fl, fr, boundary, default_extent((n,), (false,)))
 end
 
 function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x, :y)}, fr, boundary)
-    apply_multiphase_x_lower_inflow!(fl.x, boundary[1])
-    apply_multiphase_x_upper_inflow!(fr.x, boundary[2])
-    apply_multiphase_y_lower_inflow!(fl.y, boundary[3])
-    apply_multiphase_y_upper_inflow!(fr.y, boundary[4])
-    return nothing
+    nx = size(fl.x[1], 1) - 1
+    ny = size(fl.y[1], 2) - 1
+    return apply_multiphase_inflow_boundaries!(fl, fr, boundary, default_extent((nx, ny), (false, false)))
 end
 
 function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x, :y, :z)}, fr, boundary)
-    apply_multiphase_x_lower_inflow!(fl.x, boundary[1])
-    apply_multiphase_x_upper_inflow!(fr.x, boundary[2])
-    apply_multiphase_y_lower_inflow!(fl.y, boundary[3])
-    apply_multiphase_y_upper_inflow!(fr.y, boundary[4])
-    apply_multiphase_z_lower_inflow!(fl.z, boundary[5])
-    apply_multiphase_z_upper_inflow!(fr.z, boundary[6])
-    return nothing
+    nx = size(fl.x[1], 1) - 1
+    ny = size(fl.y[1], 2) - 1
+    nz = size(fl.z[1], 3) - 1
+    return apply_multiphase_inflow_boundaries!(fl, fr, boundary, default_extent((nx, ny, nz), (false, false, false)))
 end
