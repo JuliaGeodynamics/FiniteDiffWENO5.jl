@@ -22,6 +22,7 @@ function WENO_step!(
     voperator = prepare_velocity!(scheme, v)
     valNP = Val(NP)
 
+    sync_stage!(scheme, phases)
     multiphase_WENO_flux!(phases, scheme, nx, ny)
     multiphase_material_semi_discretisation!(du, voperator, scheme, Δx_, Δy_)
     @inbounds @maybe_threads multithreading for I in CartesianIndices(ut[1])
@@ -33,6 +34,7 @@ function WENO_step!(
         end
     end
 
+    sync_stage!(scheme, ut)
     multiphase_WENO_flux!(ut, scheme, nx, ny)
     multiphase_material_semi_discretisation!(du, voperator, scheme, Δx_, Δy_)
     @inbounds @maybe_threads multithreading for I in CartesianIndices(ut[1])
@@ -45,6 +47,7 @@ function WENO_step!(
         end
     end
 
+    sync_stage!(scheme, ut)
     multiphase_WENO_flux!(ut, scheme, nx, ny)
     multiphase_material_semi_discretisation!(du, voperator, scheme, Δx_, Δy_)
     @inbounds @maybe_threads multithreading for I in CartesianIndices(phases[1])

@@ -23,7 +23,8 @@ function WENO_step!(
     # an additional backend positional argument and do not accept this private
     # CPU-only keyword. A plain CPU step has Δt plus one spacing per dimension.
     cpu_step = length(args) == ndims(first(u)) + 1
-    speeds = cpu_step ? lf_speeds(weno.form, velocity_step) : nothing
+    # Conservative speeds must be reduced across the topology.
+    speeds = cpu_step ? scheme_lf_speeds(weno, velocity_step) : nothing
     for i in eachindex(u)
         if cpu_step
             WENO_step!(

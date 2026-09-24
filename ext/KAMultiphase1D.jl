@@ -101,6 +101,12 @@ if nameof(@__MODULE__) == :KAExt
             @assert get_backend(phases[q]) == backend
         end
         @assert get_backend(v.x) == backend
+        scheme.topology isa FiniteDiffWENO5.NoTopology || throw(
+            ArgumentError(
+                "KernelAbstractions multiphase WENO_step! does not support a distributed " *
+                    "topology (GPU+MPI is unsupported)"
+            )
+        )
 
         (; fl, fr, ut, du, boundary, χ, γ, ζ, ϵ) = scheme
         nx = size(phases[1], 1)

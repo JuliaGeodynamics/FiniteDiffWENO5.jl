@@ -1,5 +1,5 @@
 function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
-    (; boundary, χ, γ, ζ, ϵ, multithreading, lim_ZS) = weno
+    (; boundary, χ, γ, ζ, ϵ, multithreading, lim_ZS, extent) = weno
 
     bLx = boundary[1]
     bRx = boundary[2]
@@ -144,7 +144,7 @@ function WENO_flux!(fl, fr, u, weno, nx, ny, nz, u_min, u_max)
         end
     end
 
-    apply_inflow_boundaries!(fl, fr, boundary)
+    apply_inflow_boundaries!(fl, fr, boundary, extent)
     return nothing
 end
 

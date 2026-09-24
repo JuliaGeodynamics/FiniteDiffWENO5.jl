@@ -1,4 +1,4 @@
-@kwdef struct MultiphaseWENOScheme{T, NP, TArray, TFlux, TVelocity, TPeriodicity, TBoundary} <: AbstractWENO
+@kwdef struct MultiphaseWENOScheme{T, NP, TArray, TFlux, TVelocity, TPeriodicity, TBoundary, TExtent, TTopology} <: AbstractWENO
     # upwind and downwind constants
     γ::NTuple{3, T} = T.((0.1, 0.6, 0.3))
     # betas' constants
@@ -24,6 +24,10 @@
     vcenter::TVelocity
     # periodicity of the normal staggered velocity in each direction
     vperiodic::TPeriodicity
+    # allocated and owned extents
+    extent::TExtent
+    # distributed topology, or `NoTopology()` for an unpadded scheme
+    topology::TTopology = NoTopology()
 end
 
 """
@@ -71,11 +75,7 @@ tracers; use this type only for fractions of a whole.
 - `vcenter`: cell-centred velocity, ENO5-interpolated from staggered faces when
   `stag=true`; `nothing` on the collocated path.
 """
-function MultiphaseWENOScheme(
-        phases::Tuple{Vararg{Any, NP}};
-        boundary = nothing, stag::Bool = false, multithreading::Bool = true,
-    ) where {NP}
-
+function _validate_phases(phases::Tuple{Vararg{Any, NP}}) where {NP}
     NP >= 2 || throw(
         ArgumentError(
             "MultiphaseWENOScheme requires at least two phases, got $NP. " *
@@ -126,19 +126,20 @@ function MultiphaseWENOScheme(
             )
         )
     end
+    return c0, T, N
+end
 
-    boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))
-    boundary = validate_multiphase_boundary(boundary, N, size(c0), NP, T)
+"""Allocate multiphase buffers from validated or resolved boundary faces."""
+function _build_multiphase_scheme(
+        phases::Tuple{Vararg{Any, NP}}, extent::PaddedExtent{N}, faces;
+        stag::Bool, multithreading::Bool, topology = NoTopology(),
+    ) where {NP, N}
+    c0 = first(phases)
+    T = eltype(c0)
 
-    # dimension labels
     labels = (:x, :y, :z)[1:min(N, 3)]
     sizes = size(c0)
-
-    # allocate a zeroed buffer of the same array type as the phases
     zeros_like(dims) = fill!(similar(c0, T, dims), zero(T))
-
-    # `Val(NP)` keeps the phase count a compile-time constant, so every buffer infers as a
-    # concrete `NTuple` rather than an abstract `Tuple`.
     valNP = Val(NP)
 
     fl = NamedTuple{labels}(
@@ -155,17 +156,75 @@ function MultiphaseWENOScheme(
     du = ntuple(_ -> zeros_like(sizes), valNP)
     ut = ntuple(_ -> zeros_like(sizes), valNP)
 
-    # Material transport needs no divergence source. The collocated path passes its
-    # supplied velocity straight through (see `prepare_velocity!`), so it needs no
-    # buffer at all; only the staggered path needs somewhere to put the ENO5-prepared
-    # cell-centred velocity.
     vcenter = stag ? NamedTuple{labels}(ntuple(_ -> zeros_like(sizes), Val(N))) : nothing
-    vperiodic = stag ? velocity_periodicity(boundary, labels) : nothing
+    vperiodic = stag ? _resolved_vperiodic(faces, labels, extent) : nothing
 
-    return MultiphaseWENOScheme{T, NP, typeof(du), typeof(fl), typeof(vcenter), typeof(vperiodic), typeof(boundary)}(
-        stag = stag, boundary = boundary, multithreading = multithreading,
+    return MultiphaseWENOScheme{
+        T, NP, typeof(du), typeof(fl), typeof(vcenter), typeof(vperiodic),
+        typeof(faces), typeof(extent), typeof(topology),
+    }(
+        stag = stag, boundary = faces, multithreading = multithreading,
         fl = fl, fr = fr, du = du, ut = ut, vcenter = vcenter, vperiodic = vperiodic,
+        extent = extent, topology = topology,
     )
+end
+
+function MultiphaseWENOScheme(
+        phases::Tuple{Vararg{Any, NP}};
+        boundary = nothing, stag::Bool = false, multithreading::Bool = true,
+    ) where {NP}
+    c0, T, N = _validate_phases(phases)
+
+    boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))
+    faces = validate_multiphase_boundary(boundary, N, size(c0), NP, T)
+    extent = default_extent(size(c0), default_global_periodic(faces, N))
+    return _build_multiphase_scheme(phases, extent, faces; stag, multithreading)
+end
+
+"""
+    padded_multiphase_scheme(phases, halo; boundary, stag=false,
+                              multithreading=true, global_size=nothing,
+                              global_periodic=nothing, geometry=:cell,
+                              topology=NoTopology())
+
+Build a padded multiphase scheme from resolved boundaries, including
+`ProcessBC`. The topology constructor supplies the halo and extents.
+"""
+function padded_multiphase_scheme(
+        phases::Tuple{Vararg{Any, NP}}, halo::NTuple{N, Int}; boundary,
+        stag::Bool = false, multithreading::Bool = true,
+        global_size::Union{NTuple{N, Int}, Nothing} = nothing,
+        global_periodic::Union{NTuple{N, Bool}, Nothing} = nothing,
+        geometry::Symbol = :cell,
+        topology = NoTopology(),
+    ) where {NP, N}
+    c0, T, N2 = _validate_phases(phases)
+    N2 == N || throw(ArgumentError("halo has $N entries but phases are $(N2)D"))
+
+    faces = boundary_faces(boundary)
+    length(faces) == 2N || throw(
+        ArgumentError(
+            "boundary must contain $(2N) face conditions for $(N)D data, got $(length(faces))"
+        )
+    )
+    all(b -> b isa AbstractAdvectionBoundary, faces) || throw(
+        ArgumentError(
+            "padded_multiphase_scheme expects an already-resolved boundary tuple of " *
+                "AbstractAdvectionBoundary instances, got $(typeof(faces))"
+        )
+    )
+
+    owned = size(c0) .- 2 .* halo
+    all(>=(0), owned) || throw(
+        ArgumentError(
+            "halo $halo exceeds the allocated size $(size(c0)) — owned extent would be $owned"
+        )
+    )
+
+    gsize = global_size === nothing ? owned : global_size
+    gperiodic = global_periodic === nothing ? default_global_periodic(faces, N) : global_periodic
+    extent = PaddedExtent{N}(owned, halo, gsize, gperiodic, geometry)
+    return _build_multiphase_scheme(phases, extent, faces; stag, multithreading, topology)
 end
 
 """
