@@ -1,6 +1,17 @@
 # Topology providers implement these accessors without sharing a supertype.
 # SerialTopology exercises padding and halo hooks without MPI.
 
+"""
+    AbstractWENOTopology
+
+Optional supertype for a domain decomposition driving a padded WENO scheme.
+Subtyping it is not required: the scheme builders only call the accessor
+functions (`weno_ndims`, `weno_halo`, `weno_owned_size`, `weno_global_size`,
+`weno_global_offset`, `weno_periodic`, `weno_physical_low`,
+`weno_physical_high`, `weno_exchange_halo!`, `weno_allreduce_max`,
+`weno_allreduce_min`). Extend them under their qualified `FiniteDiffWENO5.`
+names.
+"""
 abstract type AbstractWENOTopology end
 
 """Report a missing topology accessor."""
