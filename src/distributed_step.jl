@@ -1,6 +1,51 @@
 # Topology accessors keep scheme construction and stage hooks independent of MPI.
 
 """
+    _validate_topology_layout(topo, N, sizes, geometry, stag, user_faces)
+
+Shared preflight for `build_topology_weno_scheme`/`build_topology_multiphase_scheme`:
+check dimensionality, resolve boundaries against the owned extent, and check
+the halo width and allocated array size. Returns `(resolved, halo, global_size,
+global_periodic)`.
+"""
+function _validate_topology_layout(topo, N, sizes, geometry::Symbol, stag::Bool, user_faces)
+    resolved = resolve_boundary(user_faces, topo)
+
+    halo = weno_halo(topo)
+    all(>=(3), halo) || throw(
+        ArgumentError(
+            "halo $halo from topology $(typeof(topo)) is thinner than the WENO5 reconstruction " *
+                "stencil (3) on at least one axis — building a scheme on a topology padded for a " *
+                "different stencil (e.g. a Stokes halo) would silently produce wrong ghost values " *
+                "instead of an error"
+        )
+    )
+    owned = weno_owned_size(topo; geometry)
+    # A staggered low-side send needs h+1 owned entries to avoid forwarding
+    # an unreceived seam ghost. Check every topology provider here.
+    min_owned = stag ? halo .+ 1 : halo
+    all(owned .>= min_owned) || throw(
+        ArgumentError(
+            "owned cells per rank $owned from topology $(typeof(topo)) must be at least " *
+                "$min_owned on every axis (halo $halo" * (stag ? ", +1 for stag=true" : "") *
+                ") — a thinner subdomain makes an exchange forward a not-yet-received ghost as " *
+                "if it were owned data"
+        )
+    )
+    expected_size = owned .+ 2 .* halo
+    sizes == expected_size || throw(
+        DimensionMismatch(
+            "got size $(sizes), expected $expected_size " *
+                "(owned $owned + 2×halo $halo on topology $(typeof(topo)))"
+        )
+    )
+
+    global_size = weno_global_size(topo; geometry)
+    global_periodic = weno_periodic(topo)
+    return resolved, halo, global_size, global_periodic
+end
+
+"""
     build_topology_weno_scheme(c0, topo; geometry = :cell, boundary, form,
                                 stag = false, lim_ZS = false,
                                 multithreading = true, upwind_mode = false)
@@ -18,40 +63,9 @@ function build_topology_weno_scheme(
         ArgumentError("topology is $(weno_ndims(topo))D but c0 is $(N)D")
     )
 
-    owned = weno_owned_size(topo; geometry)
-    user_faces = validate_boundary(boundary, N, owned)
-    resolved = resolve_boundary(user_faces, topo)
-
-    halo = weno_halo(topo)
-    all(>=(3), halo) || throw(
-        ArgumentError(
-            "halo $halo from topology $(typeof(topo)) is thinner than the WENO5 reconstruction " *
-                "stencil (3) on at least one axis — building a scheme on a topology padded for a " *
-                "different stencil (e.g. a Stokes halo) would silently produce wrong ghost values " *
-                "instead of an error"
-        )
-    )
-    # A staggered low-side send needs h+1 owned entries to avoid forwarding
-    # an unreceived seam ghost. Check every topology provider here.
-    min_owned = stag ? halo .+ 1 : halo
-    all(owned .>= min_owned) || throw(
-        ArgumentError(
-            "owned cells per rank $owned from topology $(typeof(topo)) must be at least " *
-                "$min_owned on every axis (halo $halo" * (stag ? ", +1 for stag=true" : "") *
-                ") — a thinner subdomain makes an exchange forward a not-yet-received ghost as " *
-                "if it were owned data"
-        )
-    )
-    expected_size = owned .+ 2 .* halo
-    size(c0) == expected_size || throw(
-        DimensionMismatch(
-            "c0 has size $(size(c0)), expected $expected_size " *
-                "(owned $owned + 2×halo $halo on topology $(typeof(topo)))"
-        )
-    )
-
-    global_size = weno_global_size(topo; geometry)
-    global_periodic = weno_periodic(topo)
+    user_faces = validate_boundary(boundary, N, weno_owned_size(topo; geometry))
+    resolved, halo, global_size, global_periodic =
+        _validate_topology_layout(topo, N, size(c0), geometry, stag, user_faces)
 
     return padded_weno_scheme(
         c0, halo; boundary = resolved, form, stag, lim_ZS, multithreading, upwind_mode,
@@ -89,7 +103,7 @@ sync_stage!(weno::WENOScheme, a) = _sync_stage!(weno.topology, weno, a)
 _sync_stage!(::NoTopology, weno::WENOScheme, a) = a
 
 function _sync_stage!(topo, weno::WENOScheme, a)
-    weno_exchange_halo!(a, topo; geometry = weno.extent.geometry)
+    weno_exchange_halo!(a, topo, weno.halo_buffers.center; geometry = weno.extent.geometry)
     fill_physical_ghosts!(a, weno.extent, weno.boundary)
     return a
 end
@@ -138,38 +152,9 @@ function build_topology_multiphase_scheme(
         ArgumentError("topology is $(weno_ndims(topo))D but the phases are $(N)D")
     )
 
-    owned = weno_owned_size(topo; geometry)
-    user_faces = validate_multiphase_boundary(boundary, N, owned, NP, eltype(c0))
-    resolved = resolve_boundary(user_faces, topo)
-
-    halo = weno_halo(topo)
-    all(>=(3), halo) || throw(
-        ArgumentError(
-            "halo $halo from topology $(typeof(topo)) is thinner than the WENO5 reconstruction " *
-                "stencil (3) on at least one axis — building a scheme on a topology padded for a " *
-                "different stencil (e.g. a Stokes halo) would silently produce wrong ghost values " *
-                "instead of an error"
-        )
-    )
-    min_owned = stag ? halo .+ 1 : halo
-    all(owned .>= min_owned) || throw(
-        ArgumentError(
-            "owned cells per rank $owned from topology $(typeof(topo)) must be at least " *
-                "$min_owned on every axis (halo $halo" * (stag ? ", +1 for stag=true" : "") *
-                ") — a thinner subdomain makes an exchange forward a not-yet-received ghost as " *
-                "if it were owned data"
-        )
-    )
-    expected_size = owned .+ 2 .* halo
-    size(c0) == expected_size || throw(
-        DimensionMismatch(
-            "phases have size $(size(c0)), expected $expected_size " *
-                "(owned $owned + 2×halo $halo on topology $(typeof(topo)))"
-        )
-    )
-
-    global_size = weno_global_size(topo; geometry)
-    global_periodic = weno_periodic(topo)
+    user_faces = validate_multiphase_boundary(boundary, N, weno_owned_size(topo; geometry), NP, eltype(c0))
+    resolved, halo, global_size, global_periodic =
+        _validate_topology_layout(topo, N, size(c0), geometry, stag, user_faces)
 
     return padded_multiphase_scheme(
         phases, halo; boundary = resolved, stag, multithreading,
@@ -201,7 +186,7 @@ sync_stage!(scheme::MultiphaseWENOScheme, state) = _sync_stage!(scheme.topology,
 _sync_stage!(::NoTopology, scheme::MultiphaseWENOScheme, state) = state
 
 function _sync_stage!(topo, scheme::MultiphaseWENOScheme, state)
-    weno_exchange_halo!(state, topo; geometry = scheme.extent.geometry)
+    weno_exchange_halo!(state, topo, scheme.halo_buffers.center; geometry = scheme.extent.geometry)
     for phase in state
         fill_physical_ghosts!(phase, scheme.extent, scheme.boundary)
     end

@@ -316,8 +316,9 @@ function _eno5_restriction(extent::PaddedExtent{N}, boundary, d) where {N}
 end
 
 """Interpolate face velocity into `weno.vcenter` using global and boundary
-stencil bounds. Callers supply distinct source and destination arrays."""
-function _interpolate_velocity!(weno::WENOScheme, velocity)
+stencil bounds. Callers supply distinct source and destination arrays. Shared
+by `WENOScheme` and `MultiphaseWENOScheme`, which expose the same fields."""
+function _interpolate_velocity!(weno::AbstractWENO, velocity)
     extent = weno.extent
     labels = keys(weno.vcenter)
     N = length(labels)
@@ -366,7 +367,8 @@ function _prepare_velocity!(topo, weno::WENOScheme, velocity)
 
     if weno.stag
         for (d, name) in enumerate(keys(velocity))
-            weno_exchange_halo!(getproperty(velocity, name), topo; geometry, stagger = d)
+            buf = getproperty(weno.halo_buffers, name)
+            weno_exchange_halo!(getproperty(velocity, name), topo, buf; geometry, stagger = d)
         end
         fill_physical_ghosts!(velocity, weno.extent, weno.boundary)
         _interpolate_velocity!(weno, velocity)
@@ -377,32 +379,12 @@ function _prepare_velocity!(topo, weno::WENOScheme, velocity)
 
     if is_conservative(weno.form)
         for name in keys(voperator)
-            weno_exchange_halo!(getproperty(voperator, name), topo; geometry, stagger = nothing)
+            weno_exchange_halo!(getproperty(voperator, name), topo, weno.halo_buffers.center; geometry, stagger = nothing)
         end
         fill_physical_ghosts!(voperator, weno.extent, weno.boundary)
     end
 
     return voperator
-end
-
-"""Interpolate `velocity` into `scheme.vcenter`, mirroring
-`_interpolate_velocity!` exactly for `MultiphaseWENOScheme`."""
-function _interpolate_velocity_multiphase!(scheme::MultiphaseWENOScheme, velocity)
-    extent = scheme.extent
-    labels = keys(scheme.vcenter)
-    N = length(labels)
-    if all(==(0), extent.pad)
-        eno5_face_to_center!(scheme.vcenter, velocity; periodic = scheme.vperiodic)
-    else
-        global_sizes = NamedTuple{labels}(ntuple(d -> extent.global_size[d], N))
-        global_periodic = NamedTuple{labels}(ntuple(d -> extent.global_periodic[d], N))
-        restrictions = NamedTuple{labels}(ntuple(d -> _eno5_restriction(extent, scheme.boundary, d), N))
-        eno5_face_to_center!(
-            scheme.vcenter, velocity; periodic = scheme.vperiodic,
-            global_sizes, global_periodic, restrictions,
-        )
-    end
-    return scheme.vcenter
 end
 
 """
@@ -422,7 +404,7 @@ function _prepare_velocity_multiphase!(::NoTopology, scheme::MultiphaseWENOSchem
     scheme.stag || return velocity
     scheme.vcenter === nothing && return velocity
     velocity === scheme.vcenter && return velocity
-    _interpolate_velocity_multiphase!(scheme, velocity)
+    _interpolate_velocity!(scheme, velocity)
     return scheme.vcenter
 end
 
@@ -433,9 +415,10 @@ function _prepare_velocity_multiphase!(topo, scheme::MultiphaseWENOScheme, veloc
 
     geometry = scheme.extent.geometry
     for (d, name) in enumerate(keys(velocity))
-        weno_exchange_halo!(getproperty(velocity, name), topo; geometry, stagger = d)
+        buf = getproperty(scheme.halo_buffers, name)
+        weno_exchange_halo!(getproperty(velocity, name), topo, buf; geometry, stagger = d)
     end
     fill_physical_ghosts!(velocity, scheme.extent, scheme.boundary)
-    _interpolate_velocity_multiphase!(scheme, velocity)
+    _interpolate_velocity!(scheme, velocity)
     return scheme.vcenter
 end

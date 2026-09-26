@@ -8,6 +8,7 @@ using MPI
 
 const SUITES = Dict(
     "halo" => "test_halo.jl",
+    "halo_buffers" => "test_halo_buffers.jl",
     "cfl" => "test_cfl_collective.jl",
     "scalar" => "test_scalar_advection.jl",
     "staggered" => "test_staggered_velocity.jl",

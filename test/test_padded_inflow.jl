@@ -2,8 +2,7 @@ using Test
 using FiniteDiffWENO5
 using FiniteDiffWENO5: padded_weno_scheme, fill_physical_ghosts!, PaddedExtent,
     ProcessBC, scalar_operator_1D!, scalar_operator_2D!, scalar_operator_3D!,
-    apply_lower_inflow!, apply_upper_inflow!, apply_x_lower_inflow!,
-    apply_multiphase_x_lower_inflow!, apply_multiphase_lower_inflow!,
+    apply_axis_inflow!, apply_multiphase_axis_inflow!,
     multiphase_inflow_value, default_extent, WENOScheme
 
 inflow_detfield(n) = [1.0 + 0.3sinpi(2 * (i - 0.5) / n) + 0.15cospi(4 * (i - 0.5) / n) for i in 1:n]
@@ -141,8 +140,8 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
         halo = 3
         extent = PaddedExtent{1}((n,), (halo,), (n,), (false,), :cell)
         flux = fill(NaN, n + 2halo + 1)
-        apply_lower_inflow!(flux, ProcessBC(), extent)
-        apply_upper_inflow!(flux, ProcessBC(), extent)
+        apply_axis_inflow!(flux, ProcessBC(), extent, 1, false)
+        apply_axis_inflow!(flux, ProcessBC(), extent, 1, true)
         @test all(isnan, flux) # untouched
     end
 
@@ -161,7 +160,7 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
         bc = PrescribedInflowBC(inflow)
 
         flux = ntuple(_ -> fill(NaN, nx + 2halo, ny + 2halo), NP)
-        apply_multiphase_x_lower_inflow!(flux, bc, extent)
+        apply_multiphase_axis_inflow!(flux, bc, extent, 1, false)
 
         face = halo + 1
         for k in 1:NP
@@ -188,7 +187,7 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
         bc = PrescribedInflowBC(inflow)
 
         flux = ntuple(_ -> fill(NaN, nx + 2halo, ny + 2halo), NP)
-        apply_multiphase_x_lower_inflow!(flux, bc, extent)
+        apply_multiphase_axis_inflow!(flux, bc, extent, 1, false)
 
         face = halo + 1
         for (jlocal, j) in enumerate((halo + 1):(halo + ny))
@@ -203,8 +202,8 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
         NP = 2
         extent = PaddedExtent{2}((nx, ny), (halo, halo), (nx, ny), (false, false), :cell)
         flux = ntuple(_ -> fill(NaN, nx + 2halo, ny + 2halo), NP)
-        apply_multiphase_x_lower_inflow!(flux, ProcessBC(), extent)
-        apply_multiphase_lower_inflow!((fill(NaN, 3),), ProcessBC(), PaddedExtent{1}((3,), (0,), (3,), (false,), :cell))
+        apply_multiphase_axis_inflow!(flux, ProcessBC(), extent, 1, false)
+        apply_multiphase_axis_inflow!((fill(NaN, 3),), ProcessBC(), PaddedExtent{1}((3,), (0,), (3,), (false,), :cell), 1, false)
         @test all(x -> all(isnan, x), flux)
     end
 
@@ -218,7 +217,7 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
         profile = collect(1.0:ny) # exactly owned-sized, no slack for an over-run
         bc = PrescribedInflowBC(profile)
         flux = zeros(nx + 2halo, ny + 2halo)
-        @test apply_x_lower_inflow!(flux, bc, extent) === nothing
+        @test apply_axis_inflow!(flux, bc, extent, 1, false) === nothing
     end
 
     @testset "Existing serial inflow behaviour is unaffected (unpadded scheme)" begin

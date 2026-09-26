@@ -1,4 +1,4 @@
-@kwdef struct MultiphaseWENOScheme{T, NP, TArray, TFlux, TVelocity, TPeriodicity, TBoundary, TExtent, TTopology} <: AbstractWENO
+@kwdef struct MultiphaseWENOScheme{T, NP, TArray, TFlux, TVelocity, TPeriodicity, TBoundary, TExtent, TTopology, THaloBuffers} <: AbstractWENO
     # upwind and downwind constants
     γ::NTuple{3, T} = T.((0.1, 0.6, 0.3))
     # betas' constants
@@ -28,6 +28,9 @@
     extent::TExtent
     # distributed topology, or `NoTopology()` for an unpadded scheme
     topology::TTopology = NoTopology()
+    # preallocated halo-exchange buffers, or `EmptyHaloBuffers()` for an
+    # unpadded scheme or one whose topology doesn't provide real buffers
+    halo_buffers::THaloBuffers = EmptyHaloBuffers()
 end
 
 """
@@ -158,14 +161,15 @@ function _build_multiphase_scheme(
 
     vcenter = stag ? NamedTuple{labels}(ntuple(_ -> zeros_like(sizes), Val(N))) : nothing
     vperiodic = stag ? _resolved_vperiodic(faces, labels, extent) : nothing
+    halo_buffers = halo_buffers_for_multiphase(topology, extent, stag, T, Val(NP))
 
     return MultiphaseWENOScheme{
         T, NP, typeof(du), typeof(fl), typeof(vcenter), typeof(vperiodic),
-        typeof(faces), typeof(extent), typeof(topology),
+        typeof(faces), typeof(extent), typeof(topology), typeof(halo_buffers),
     }(
         stag = stag, boundary = faces, multithreading = multithreading,
         fl = fl, fr = fr, du = du, ut = ut, vcenter = vcenter, vperiodic = vperiodic,
-        extent = extent, topology = topology,
+        extent = extent, topology = topology, halo_buffers = halo_buffers,
     )
 end
 
@@ -201,25 +205,7 @@ function padded_multiphase_scheme(
     c0, T, N2 = _validate_phases(phases)
     N2 == N || throw(ArgumentError("halo has $N entries but phases are $(N2)D"))
 
-    faces = boundary_faces(boundary)
-    length(faces) == 2N || throw(
-        ArgumentError(
-            "boundary must contain $(2N) face conditions for $(N)D data, got $(length(faces))"
-        )
-    )
-    all(b -> b isa AbstractAdvectionBoundary, faces) || throw(
-        ArgumentError(
-            "padded_multiphase_scheme expects an already-resolved boundary tuple of " *
-                "AbstractAdvectionBoundary instances, got $(typeof(faces))"
-        )
-    )
-
-    owned = size(c0) .- 2 .* halo
-    all(>=(0), owned) || throw(
-        ArgumentError(
-            "halo $halo exceeds the allocated size $(size(c0)) — owned extent would be $owned"
-        )
-    )
+    faces, owned = _resolve_padded_extent(size(c0), halo, boundary, :padded_multiphase_scheme)
 
     gsize = global_size === nothing ? owned : global_size
     gperiodic = global_periodic === nothing ? default_global_periodic(faces, N) : global_periodic

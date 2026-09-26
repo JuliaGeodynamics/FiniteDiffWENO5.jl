@@ -79,9 +79,9 @@ function apply_conservative_inflow_1d!(fl, fr, u, v, α, boundary, extent::Padde
 end
 
 # Higher-dimensional counterparts. Tangential indices follow the same convention
-# as `apply_x_lower_inflow!` and friends in `boundaries.jl`: the remaining axes in
-# their natural order, looped over the owned window and offset into the
-# (owned-sized) inflow value array by the tangential pad.
+# as `apply_axis_inflow!` in `boundaries.jl`: the remaining axes in their natural
+# order, looped over the owned window and offset into the (owned-sized) inflow
+# value array by the tangential pad.
 function apply_conservative_inflow_2d!(fl, fr, u, vx, vy, αx, αy, boundary, extent::PaddedExtent{2})
     bLx, bRx, bLy, bRy = boundary
     px, py = extent.pad[1], extent.pad[2]

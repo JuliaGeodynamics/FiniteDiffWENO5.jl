@@ -158,136 +158,68 @@ right_index(i, d, nx, b::ProcessBC) = right_index(i, d, nx, b.indexing)
 # Install inflow flux at physical faces and across owned tangential entries.
 # The inflow value array is indexed relative to the owned extent.
 
-apply_lower_inflow!(flux, ::Any, extent) = nothing
-apply_upper_inflow!(flux, ::Any, extent) = nothing
+"""
+    _inflow_ranges(extent::PaddedExtent{N}, d, upper)
 
-function apply_lower_inflow!(flux::AbstractVector, boundary::PrescribedInflowBC, extent::PaddedExtent{1})
-    flux[extent.pad[1] + 1] = inflow_value(boundary)
-    return nothing
-end
-
-function apply_upper_inflow!(flux::AbstractVector, boundary::PrescribedInflowBC, extent::PaddedExtent{1})
-    flux[extent.pad[1] + extent.owned[1] + 1] = inflow_value(boundary)
-    return nothing
-end
-
-function apply_x_lower_inflow!(flux, boundary::PrescribedInflowBC, extent::PaddedExtent{3})
-    pj, pk = extent.pad[2], extent.pad[3]
-    face = extent.pad[1] + 1
-    @inbounds for k in (pk + 1):(pk + extent.owned[3]), j in (pj + 1):(pj + extent.owned[2])
-        flux[face, j, k] = inflow_value(boundary, j - pj, k - pk)
+Index ranges for axis `d`'s (`upper` ? high : low) face: `d` fixed to one
+index, every other axis spanning its owned entries.
+"""
+function _inflow_ranges(extent::PaddedExtent{N}, d, upper) where {N}
+    face = upper ? extent.pad[d] + extent.owned[d] + 1 : extent.pad[d] + 1
+    return ntuple(N) do ax
+        ax == d ? (face:face) : (extent.pad[ax] + 1):(extent.pad[ax] + extent.owned[ax])
     end
-    return nothing
 end
-apply_x_lower_inflow!(flux, ::Any, extent) = nothing
 
-function apply_x_lower_inflow!(flux::AbstractMatrix, boundary::PrescribedInflowBC, extent::PaddedExtent{2})
-    pj = extent.pad[2]
-    face = extent.pad[1] + 1
-    @inbounds for j in (pj + 1):(pj + extent.owned[2])
-        flux[face, j] = inflow_value(boundary, j - pj)
+"""
+    _tangential_offset(I::CartesianIndex, extent::PaddedExtent{N}, d)
+
+`I`'s coordinates on every axis but `d`, each shifted to a 1-based owned-window
+offset — the argument order `inflow_value`/`multiphase_inflow_value` expect.
+"""
+function _tangential_offset(I::CartesianIndex, extent::PaddedExtent{N}, d) where {N}
+    return ntuple(N - 1) do k
+        axis = k < d ? k : k + 1
+        I[axis] - extent.pad[axis]
     end
-    return nothing
 end
 
-function apply_x_upper_inflow!(flux, boundary::PrescribedInflowBC, extent::PaddedExtent{3})
-    pj, pk = extent.pad[2], extent.pad[3]
-    face = extent.pad[1] + extent.owned[1] + 1
-    @inbounds for k in (pk + 1):(pk + extent.owned[3]), j in (pj + 1):(pj + extent.owned[2])
-        flux[face, j, k] = inflow_value(boundary, j - pj, k - pk)
-    end
-    return nothing
-end
-apply_x_upper_inflow!(flux, ::Any, extent) = nothing
+apply_axis_inflow!(flux, ::Any, extent, d, upper) = nothing
 
-function apply_x_upper_inflow!(flux::AbstractMatrix, boundary::PrescribedInflowBC, extent::PaddedExtent{2})
-    pj = extent.pad[2]
-    face = extent.pad[1] + extent.owned[1] + 1
-    @inbounds for j in (pj + 1):(pj + extent.owned[2])
-        flux[face, j] = inflow_value(boundary, j - pj)
+function apply_axis_inflow!(
+        flux::AbstractArray{T, N}, boundary::PrescribedInflowBC, extent::PaddedExtent{N}, d, upper,
+    ) where {T, N}
+    @inbounds for I in CartesianIndices(_inflow_ranges(extent, d, upper))
+        flux[I] = inflow_value(boundary, _tangential_offset(I, extent, d)...)
     end
     return nothing
 end
 
-function apply_y_lower_inflow!(flux, boundary::PrescribedInflowBC, extent::PaddedExtent{3})
-    pi_, pk = extent.pad[1], extent.pad[3]
-    face = extent.pad[2] + 1
-    @inbounds for k in (pk + 1):(pk + extent.owned[3]), i in (pi_ + 1):(pi_ + extent.owned[1])
-        flux[i, face, k] = inflow_value(boundary, i - pi_, k - pk)
-    end
-    return nothing
-end
-apply_y_lower_inflow!(flux, ::Any, extent) = nothing
-
-function apply_y_lower_inflow!(flux::AbstractMatrix, boundary::PrescribedInflowBC, extent::PaddedExtent{2})
-    pi_ = extent.pad[1]
-    face = extent.pad[2] + 1
-    @inbounds for i in (pi_ + 1):(pi_ + extent.owned[1])
-        flux[i, face] = inflow_value(boundary, i - pi_)
-    end
-    return nothing
-end
-
-function apply_y_upper_inflow!(flux, boundary::PrescribedInflowBC, extent::PaddedExtent{3})
-    pi_, pk = extent.pad[1], extent.pad[3]
-    face = extent.pad[2] + extent.owned[2] + 1
-    @inbounds for k in (pk + 1):(pk + extent.owned[3]), i in (pi_ + 1):(pi_ + extent.owned[1])
-        flux[i, face, k] = inflow_value(boundary, i - pi_, k - pk)
-    end
-    return nothing
-end
-apply_y_upper_inflow!(flux, ::Any, extent) = nothing
-
-function apply_y_upper_inflow!(flux::AbstractMatrix, boundary::PrescribedInflowBC, extent::PaddedExtent{2})
-    pi_ = extent.pad[1]
-    face = extent.pad[2] + extent.owned[2] + 1
-    @inbounds for i in (pi_ + 1):(pi_ + extent.owned[1])
-        flux[i, face] = inflow_value(boundary, i - pi_)
-    end
-    return nothing
-end
-
-function apply_z_lower_inflow!(flux, boundary::PrescribedInflowBC, extent::PaddedExtent{3})
-    pi_, pj = extent.pad[1], extent.pad[2]
-    face = extent.pad[3] + 1
-    @inbounds for j in (pj + 1):(pj + extent.owned[2]), i in (pi_ + 1):(pi_ + extent.owned[1])
-        flux[i, j, face] = inflow_value(boundary, i - pi_, j - pj)
-    end
-    return nothing
-end
-apply_z_lower_inflow!(flux, ::Any, extent) = nothing
-
-function apply_z_upper_inflow!(flux, boundary::PrescribedInflowBC, extent::PaddedExtent{3})
-    pi_, pj = extent.pad[1], extent.pad[2]
-    face = extent.pad[3] + extent.owned[3] + 1
-    @inbounds for j in (pj + 1):(pj + extent.owned[2]), i in (pi_ + 1):(pi_ + extent.owned[1])
-        flux[i, j, face] = inflow_value(boundary, i - pi_, j - pj)
-    end
-    return nothing
-end
-apply_z_upper_inflow!(flux, ::Any, extent) = nothing
-
+# Three per-arity methods, not one loop over `enumerate(keys(fl))`: `boundary`
+# is a heterogeneous tuple, so a runtime-computed index into it (`boundary[2d-1]`)
+# is not type-stable and allocates (measured). Every index/field access below
+# is a compile-time literal instead.
 function apply_inflow_boundaries!(fl::NamedTuple{(:x,)}, fr, boundary, extent)
-    apply_lower_inflow!(fl.x, boundary[1], extent)
-    apply_upper_inflow!(fr.x, boundary[2], extent)
+    apply_axis_inflow!(fl.x, boundary[1], extent, 1, false)
+    apply_axis_inflow!(fr.x, boundary[2], extent, 1, true)
     return nothing
 end
 
 function apply_inflow_boundaries!(fl::NamedTuple{(:x, :y)}, fr, boundary, extent)
-    apply_x_lower_inflow!(fl.x, boundary[1], extent)
-    apply_x_upper_inflow!(fr.x, boundary[2], extent)
-    apply_y_lower_inflow!(fl.y, boundary[3], extent)
-    apply_y_upper_inflow!(fr.y, boundary[4], extent)
+    apply_axis_inflow!(fl.x, boundary[1], extent, 1, false)
+    apply_axis_inflow!(fr.x, boundary[2], extent, 1, true)
+    apply_axis_inflow!(fl.y, boundary[3], extent, 2, false)
+    apply_axis_inflow!(fr.y, boundary[4], extent, 2, true)
     return nothing
 end
 
 function apply_inflow_boundaries!(fl::NamedTuple{(:x, :y, :z)}, fr, boundary, extent)
-    apply_x_lower_inflow!(fl.x, boundary[1], extent)
-    apply_x_upper_inflow!(fr.x, boundary[2], extent)
-    apply_y_lower_inflow!(fl.y, boundary[3], extent)
-    apply_y_upper_inflow!(fr.y, boundary[4], extent)
-    apply_z_lower_inflow!(fl.z, boundary[5], extent)
-    apply_z_upper_inflow!(fr.z, boundary[6], extent)
+    apply_axis_inflow!(fl.x, boundary[1], extent, 1, false)
+    apply_axis_inflow!(fr.x, boundary[2], extent, 1, true)
+    apply_axis_inflow!(fl.y, boundary[3], extent, 2, false)
+    apply_axis_inflow!(fr.y, boundary[4], extent, 2, true)
+    apply_axis_inflow!(fl.z, boundary[5], extent, 3, false)
+    apply_axis_inflow!(fr.z, boundary[6], extent, 3, true)
     return nothing
 end
 

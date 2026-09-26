@@ -175,10 +175,14 @@ gcenter_exact(gi, n) = sinpi(2 * (gi - 0.5) / n) # exact cell-centre value of si
     FiniteDiffWENO5.weno_periodic(t::CountingTopology) = FiniteDiffWENO5.weno_periodic(t.inner)
     FiniteDiffWENO5.weno_physical_low(t::CountingTopology) = FiniteDiffWENO5.weno_physical_low(t.inner)
     FiniteDiffWENO5.weno_physical_high(t::CountingTopology) = FiniteDiffWENO5.weno_physical_high(t.inner)
-    function FiniteDiffWENO5.weno_exchange_halo!(field::AbstractArray, t::CountingTopology; kwargs...)
+    function FiniteDiffWENO5.weno_exchange_halo!(field::AbstractArray, t::CountingTopology, buffers; kwargs...)
         t.count[] += 1
-        return FiniteDiffWENO5.weno_exchange_halo!(field, t.inner; kwargs...)
+        return FiniteDiffWENO5.weno_exchange_halo!(field, t.inner, buffers; kwargs...)
     end
+    FiniteDiffWENO5.halo_buffers_for(t::CountingTopology, extent::FiniteDiffWENO5.PaddedExtent, stag::Bool, ::Type{T}) where {T} =
+        FiniteDiffWENO5.halo_buffers_for(t.inner, extent, stag, T)
+    FiniteDiffWENO5.halo_buffers_for_multiphase(t::CountingTopology, extent::FiniteDiffWENO5.PaddedExtent, stag::Bool, ::Type{T}, valNP::Val) where {T} =
+        FiniteDiffWENO5.halo_buffers_for_multiphase(t.inner, extent, stag, T, valNP)
     FiniteDiffWENO5.weno_allreduce_max(v, t::CountingTopology) = FiniteDiffWENO5.weno_allreduce_max(v, t.inner)
     FiniteDiffWENO5.weno_allreduce_min(v, t::CountingTopology) = FiniteDiffWENO5.weno_allreduce_min(v, t.inner)
 

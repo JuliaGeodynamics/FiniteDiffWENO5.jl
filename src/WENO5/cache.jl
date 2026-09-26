@@ -1,6 +1,6 @@
 abstract type AbstractWENO end
 
-@kwdef struct WENOScheme{T, TArray, TFlux, TVelocity, TPeriodicity, TForm, TBoundary, TExtent, TTopology} <: AbstractWENO
+@kwdef struct WENOScheme{T, TArray, TFlux, TVelocity, TPeriodicity, TForm, TBoundary, TExtent, TTopology, THaloBuffers} <: AbstractWENO
     # upwind and downwind constants
     γ::NTuple{3, T} = T.((0.1, 0.6, 0.3))
     # betas' constants
@@ -36,6 +36,9 @@ abstract type AbstractWENO end
     extent::TExtent
     # distributed topology, or `NoTopology()` for an unpadded scheme
     topology::TTopology = NoTopology()
+    # preallocated halo-exchange buffers, or `EmptyHaloBuffers()` for an
+    # unpadded scheme or one whose topology doesn't provide real buffers
+    halo_buffers::THaloBuffers = EmptyHaloBuffers()
 end
 
 """
@@ -148,18 +151,19 @@ function _build_weno_scheme(
     # path passes its supplied velocity straight through and needs no buffer.
     vcenter = stag ? NamedTuple{labels}(ntuple(_ -> zeros_like(sizes), min(N, 3))) : nothing
     vperiodic = stag ? _resolved_vperiodic(faces, labels, extent) : nothing
+    halo_buffers = halo_buffers_for(topology, extent, stag, T)
 
     TFlux = typeof(fl)
     TArray = typeof(du)
 
     return WENOScheme{
         T, TArray, TFlux, typeof(vcenter), typeof(vperiodic), typeof(form_tag),
-        typeof(faces), typeof(extent), typeof(topology),
+        typeof(faces), typeof(extent), typeof(topology), typeof(halo_buffers),
     }(
         stag = stag, form = form_tag, boundary = faces, lim_ZS = lim_ZS,
         multithreading = multithreading, upwind_mode = upwind_mode, fl = fl, fr = fr,
         du = du, ut = ut, vcenter = vcenter, vperiodic = vperiodic, extent = extent,
-        topology = topology,
+        topology = topology, halo_buffers = halo_buffers,
     )
 end
 
@@ -184,26 +188,7 @@ function padded_weno_scheme(
         topology = NoTopology(),
     ) where {T, N}
 
-    faces = boundary_faces(boundary)
-    length(faces) == 2N || throw(
-        ArgumentError(
-            "boundary must contain $(2N) face conditions for $(N)D data, got $(length(faces))"
-        )
-    )
-    all(b -> b isa AbstractAdvectionBoundary, faces) || throw(
-        ArgumentError(
-            "padded_weno_scheme expects an already-resolved boundary tuple of " *
-                "AbstractAdvectionBoundary instances, got $(typeof(faces))"
-        )
-    )
-
-    owned = size(c0) .- 2 .* halo
-    all(>=(0), owned) || throw(
-        ArgumentError(
-            "halo $halo exceeds the allocated size $(size(c0)) — owned extent " *
-                "would be $owned"
-        )
-    )
+    faces, owned = _resolve_padded_extent(size(c0), halo, boundary, :padded_weno_scheme)
 
     gperiodic = global_periodic === nothing ? default_global_periodic(faces, N) : global_periodic
     extent = PaddedExtent{N}(owned, halo, global_size, gperiodic, geometry)

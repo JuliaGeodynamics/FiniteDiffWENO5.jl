@@ -85,6 +85,36 @@ the allocated extent, cell geometry."""
 default_extent(sizes::NTuple{N, Int}, global_periodic::NTuple{N, Bool}) where {N} =
     PaddedExtent{N}(sizes, ntuple(_ -> 0, N), sizes, global_periodic, :cell)
 
+"""
+    _resolve_padded_extent(sizes, halo, boundary, caller)
+
+Shared `padded_weno_scheme`/`padded_multiphase_scheme` preamble: validate
+`boundary`'s face count/types and the owned extent, returning `(faces,
+owned)`. `caller` names the public function in error messages.
+"""
+function _resolve_padded_extent(sizes::NTuple{N, Int}, halo::NTuple{N, Int}, boundary, caller::Symbol) where {N}
+    faces = boundary_faces(boundary)
+    length(faces) == 2N || throw(
+        ArgumentError(
+            "boundary must contain $(2N) face conditions for $(N)D data, got $(length(faces))"
+        )
+    )
+    all(b -> b isa AbstractAdvectionBoundary, faces) || throw(
+        ArgumentError(
+            "$caller expects an already-resolved boundary tuple of " *
+                "AbstractAdvectionBoundary instances, got $(typeof(faces))"
+        )
+    )
+
+    owned = sizes .- 2 .* halo
+    all(>=(0), owned) || throw(
+        ArgumentError(
+            "halo $halo exceeds the allocated size $sizes — owned extent would be $owned"
+        )
+    )
+    return faces, owned
+end
+
 macro maybe_threads(flag, ex)
     return esc(:(($flag) ? (Base.Threads.@threads $ex) : $ex))
 end

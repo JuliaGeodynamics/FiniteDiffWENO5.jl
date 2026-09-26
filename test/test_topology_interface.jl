@@ -31,7 +31,6 @@ FiniteDiffWENO5.weno_global_offset(t::MockTopology; geometry::Symbol = :cell) =
 FiniteDiffWENO5.weno_periodic(t::MockTopology) = t.periodic
 FiniteDiffWENO5.weno_physical_low(t::MockTopology) = t.phys_lo
 FiniteDiffWENO5.weno_physical_high(t::MockTopology) = t.phys_hi
-FiniteDiffWENO5.weno_exchange_halo!(field::AbstractArray, ::MockTopology; geometry::Symbol = :cell, stagger = nothing) = field
 FiniteDiffWENO5.weno_allreduce_max(v, ::MockTopology) = v
 FiniteDiffWENO5.weno_allreduce_min(v, ::MockTopology) = v
 
@@ -80,7 +79,7 @@ FiniteDiffWENO5.MultiphaseWENOScheme(phases::Tuple, topo::ForeignSizedTopology; 
         @test_throws ArgumentError weno_periodic(t)
         @test_throws ArgumentError weno_physical_low(t)
         @test_throws ArgumentError weno_physical_high(t)
-        @test_throws ArgumentError weno_exchange_halo!(zeros(3), t)
+        @test_throws ArgumentError weno_exchange_halo!(zeros(3), t, FiniteDiffWENO5.EmptyHaloBuffers())
         @test_throws ArgumentError weno_allreduce_max(1.0, t)
         @test_throws ArgumentError weno_allreduce_min(1.0, t)
         # the message names the missing extension, not just "no method"
@@ -95,7 +94,7 @@ FiniteDiffWENO5.MultiphaseWENOScheme(phases::Tuple, topo::ForeignSizedTopology; 
         # the Tuple exchange method has a real default body (loops the
         # single-array method), so it throws TRANSITIVELY, not via its own
         # throwing fallback.
-        @test_throws ArgumentError weno_exchange_halo!((zeros(3), zeros(3)), t)
+        @test_throws ArgumentError weno_exchange_halo!((zeros(3), zeros(3)), t, FiniteDiffWENO5.EmptyHaloBuffers())
     end
 
     @testset "NoTopology is not an AbstractWENOTopology; every accessor hits the fallback" begin
@@ -106,7 +105,7 @@ FiniteDiffWENO5.MultiphaseWENOScheme(phases::Tuple, topo::ForeignSizedTopology; 
         @test_throws ArgumentError weno_owned_size(t)
         @test_throws ArgumentError weno_periodic(t)
         @test_throws ArgumentError weno_physical_low(t)
-        @test_throws ArgumentError weno_exchange_halo!(zeros(3), t)
+        @test_throws ArgumentError weno_exchange_halo!(zeros(3), t, FiniteDiffWENO5.EmptyHaloBuffers())
         @test_throws ArgumentError weno_allreduce_max(1.0, t)
     end
 
@@ -122,7 +121,7 @@ FiniteDiffWENO5.MultiphaseWENOScheme(phases::Tuple, topo::ForeignSizedTopology; 
         @test weno_physical_low(topo) == ntuple(_ -> true, N)
         @test weno_physical_high(topo) == ntuple(_ -> true, N)
         a = zeros(dims .+ 2halo)
-        @test weno_exchange_halo!(a, topo) === a # no-op, single rank
+        @test weno_exchange_halo!(a, topo, FiniteDiffWENO5.EmptyHaloBuffers()) === a # no-op, single rank
         @test weno_allreduce_max(3.5, topo) == 3.5
         @test weno_allreduce_min(3.5, topo) == 3.5
         @test weno_allreduce_max((1.0, 2.0), topo) == (1.0, 2.0)
