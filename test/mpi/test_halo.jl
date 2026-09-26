@@ -75,6 +75,30 @@ function check_cell_exchange(a, topo; geometry = :cell, periodic = ntuple(_ -> f
     return nothing
 end
 
+"""
+Ad-hoc halo-buffer pool for a test that calls `weno_exchange_halo!` directly
+against a `topo`, rather than through a scheme's own preallocated pool (a
+real `WENOScheme`/`MultiphaseWENOScheme` builds one once at construction
+instead — see `halo_buffers_for`). `stagger` selects `.center` (`nothing`)
+or the matching `.x`/`.y`/`.z` entry; `NP` selects the fused multi-array
+pool used by the `Tuple` exchange method.
+"""
+function halo_test_buffers(
+        topo, ::Type{T} = Float64; geometry::Symbol = :cell,
+        stagger::Union{Nothing, Int} = nothing, NP::Union{Nothing, Int} = nothing,
+    ) where {T}
+    N = weno_ndims(topo)
+    extent = FiniteDiffWENO5.PaddedExtent{N}(
+        weno_owned_size(topo; geometry), weno_halo(topo),
+        weno_global_size(topo; geometry), FiniteDiffWENO5.weno_periodic(topo), geometry,
+    )
+    pool = NP === nothing ?
+        FiniteDiffWENO5.halo_buffers_for(topo, extent, stagger !== nothing, T) :
+        FiniteDiffWENO5.halo_buffers_for_multiphase(topo, extent, stagger !== nothing, T, Val(NP))
+    stagger === nothing && return pool.center
+    return getproperty(pool, (:x, :y, :z)[stagger])
+end
+
 const CELL_2D_CASES = nprocs == 4 ?
     (((24, 16), nothing), ((24, 16), (4, 1))) : # the second case forces an interior rank with neighbours on both sides of axis 1
     (((24, 16), nothing),)
@@ -88,7 +112,7 @@ const CELL_2D_CASES = nprocs == 4 ?
 
     a = fill(SENTINEL, npad)
     fill_owned!(a, topo)
-    weno_exchange_halo!(a, topo)
+    weno_exchange_halo!(a, topo, halo_test_buffers(topo))
     check_cell_exchange(a, topo)
 
     if forced_dims !== nothing && nprocs == 4
@@ -107,7 +131,7 @@ end
 
     a = fill(SENTINEL, npad)
     fill_owned!(a, topo)
-    weno_exchange_halo!(a, topo)
+    weno_exchange_halo!(a, topo, halo_test_buffers(topo))
     check_cell_exchange(a, topo)
 end
 
@@ -121,7 +145,7 @@ end
 
     a = fill(SENTINEL, npad)
     fill_owned!(a, topo)
-    weno_exchange_halo!(a, topo)
+    weno_exchange_halo!(a, topo, halo_test_buffers(topo))
     check_cell_exchange(a, topo; periodic = (true, true))
 end
 
@@ -137,7 +161,7 @@ end
     npad = owned .+ 2halo
     a = fill(SENTINEL, npad)
     fill_owned!(a, topo)
-    weno_exchange_halo!(a, topo)
+    weno_exchange_halo!(a, topo, halo_test_buffers(topo))
     # axis-1 ghosts are untouched (still sentinel); axis-2 ghosts, if any
     # neighbour exists, are filled.
     for I in CartesianIndices(a)
@@ -180,7 +204,7 @@ end
         a[idx...] = facevalue(gs)
     end
 
-    weno_exchange_halo!(a, topo; stagger = stag_axis)
+    weno_exchange_halo!(a, topo, halo_test_buffers(topo; stagger = stag_axis); stagger = stag_axis)
 
     lo = halo + 1
     hi_owned = halo + own_hi_local
@@ -210,7 +234,7 @@ end
     for i in 1:owned[1] # only the primary n faces — never the duplicate
         a[halo + i] = 1000.0 * (offset[1] + i)
     end
-    weno_exchange_halo!(a, topo; stagger = 1)
+    weno_exchange_halo!(a, topo, halo_test_buffers(topo; stagger = 1); stagger = 1)
 
     # A single-rank periodic axis wraps through physical ghost filling.
     # Halo exchange handles periodic seams only when multiple ranks share it.
@@ -241,9 +265,9 @@ end
     b1 = copy(a1)
     b2 = copy(a2)
 
-    weno_exchange_halo!(a1, topo)
-    weno_exchange_halo!(a2, topo)
-    weno_exchange_halo!((b1, b2), topo)
+    weno_exchange_halo!(a1, topo, halo_test_buffers(topo))
+    weno_exchange_halo!(a2, topo, halo_test_buffers(topo))
+    weno_exchange_halo!((b1, b2), topo, halo_test_buffers(topo; NP = 2))
 
     @test a1 == b1
     @test a2 == b2
@@ -282,7 +306,7 @@ end
     npad = owned_v .+ 2halo
     a = fill(SENTINEL, npad)
     fill_owned!(a, topo; geometry = :vertex)
-    weno_exchange_halo!(a, topo; geometry = :vertex)
+    weno_exchange_halo!(a, topo, halo_test_buffers(topo; geometry = :vertex); geometry = :vertex)
     check_cell_exchange(a, topo; geometry = :vertex)
 end
 
@@ -290,7 +314,9 @@ end
     halo = 3
     topo = weno_cartesian_topology((12, 8); comm, halo)
     a = allocate_weno_field(topo; geometry = :vertex)
-    @test_throws ArgumentError weno_exchange_halo!(a, topo; geometry = :vertex, stagger = 1)
+    @test_throws ArgumentError weno_exchange_halo!(
+        a, topo, halo_test_buffers(topo; geometry = :vertex, stagger = 1); geometry = :vertex, stagger = 1,
+    )
 end
 
 @testset "a subdomain thinner than the halo fails with a clear message" begin
@@ -310,5 +336,44 @@ end
         # global (halo+1)*nprocs cells, split evenly → owned == halo + 1
         topo = weno_cartesian_topology(((halo + 1) * nprocs,); comm, halo)
         @test weno_owned_size(topo) == (halo + 1,)
+    end
+end
+
+@testset "weno_exchange_halo! allocates nothing after warmup" begin
+    halo_width = 3
+    topo = weno_cartesian_topology(
+        ((halo_width + 1) * nprocs, halo_width + 1); comm, halo = halo_width, dims = (nprocs, 1),
+    )
+    halo = weno_halo(topo)
+    owned = weno_owned_size(topo)
+    a = zeros(owned[1] + 2halo[1], owned[2] + 2halo[2])
+    buffers = halo_test_buffers(topo)
+
+    weno_exchange_halo!(a, topo, buffers) # warmup: let compilation happen before measuring
+    bytes = @allocated weno_exchange_halo!(a, topo, buffers)
+    @test bytes == 0
+end
+
+@testset "repeated exchanges with reused buffers match a single exchange" begin
+    halo_width = 3
+    topo = weno_cartesian_topology(
+        ((halo_width + 1) * nprocs, halo_width + 1); comm, halo = halo_width, dims = (nprocs, 1),
+    )
+    halo = weno_halo(topo)
+    owned = weno_owned_size(topo)
+    buffers = halo_test_buffers(topo)
+
+    for iteration in 1:5
+        value = Float64(rank) + iteration
+
+        # Reference: a fresh, throwaway-buffer single exchange each iteration.
+        a_once = fill(value, owned[1] + 2halo[1], owned[2] + 2halo[2])
+        weno_exchange_halo!(a_once, topo, halo_test_buffers(topo))
+
+        # Reuses the SAME `buffers` object across all 5 iterations.
+        a_reused = fill(value, owned[1] + 2halo[1], owned[2] + 2halo[2])
+        weno_exchange_halo!(a_reused, topo, buffers)
+
+        @test a_reused == a_once
     end
 end
