@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Getting Started · FiniteDiffWENO5</title><meta name="title" content="Getting Started · FiniteDiffWENO5"/><meta property="og:title" content="Getting Started · FiniteDiffWENO5"/><meta property="twitter:title" content="Getting Started · FiniteDiffWENO5"/><meta name="description" content="Documentation for FiniteDiffWENO5."/><meta property="og:description" content="Documentation for FiniteDiffWENO5."/><meta property="twitter:description" content="Documentation for FiniteDiffWENO5."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">FiniteDiffWENO5</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li class="is-active"><a class="tocitem" href>Getting Started</a><ul class="internal"><li><a class="tocitem" href="#Getting-Started"><span>Getting Started</span></a></li></ul></li><li><a class="tocitem" href="../background/">Background</a></li><li><a class="tocitem" href="../API/">API</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Getting Started</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Getting Started</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/JuliaGeodynamics/FiniteDiffWENO5.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/JuliaGeodynamics/FiniteDiffWENO5.jl/blob/main/docs/src/GettingStarted.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h2 id="Getting-Started"><a class="docs-heading-anchor" href="#Getting-Started">Getting Started</a><a id="Getting-Started-1"></a><a class="docs-heading-anchor-permalink" href="#Getting-Started" title="Permalink"></a></h2><p>There are currently two exported functions in FiniteDiffWENO5.jl: <code>WENOScheme()</code> and <code>WENO_step!()</code>. The user must define the grid and the initial conditions themselves.</p><p><code>WENOScheme()</code> is used to create a WENO scheme structure containing all the necessary information for the WENO method, while <code>WENO_step!()</code> performs one step of the time integration using the WENO-Z method and a 3rd-order Runge-Kutta method. Refer to the docstrings to see the available options for each function.</p><p>Here is a simple example of how to use FiniteDiffWENO5.jl to solve the 1D advection equation using the conservative form on a staggered grid. For more examples, please refer to the folder examples in the repository or the tests in the test folder.</p><pre><code class="language-julia hljs">using FiniteDiffWENO5
+
+nx = 400
+
+x_min = -1.0
+x_max = 1.0
+Lx = x_max - x_min
+
+x = range(x_min, stop = x_max, length = nx)
+
+# Courant number
+CFL = 0.4
+period = 4
+
+# Parameters for Shu test
+z = -0.7
+δ = 0.005
+β = log(2) / (36 * δ^2)
+a = 0.5
+α = 10
+
+# Functions
+G(x, β, z) = exp.(-β .* (x .- z) .^ 2)
+F(x, α, a) = sqrt.(max.(1 .- α^2 .* (x .- a) .^ 2, 0.0))
+
+# Grid x assumed defined
+u0_vec = zeros(length(x))
+
+# Gaussian-like smooth bump at x in [-0.8, -0.6]
+idx = (x .&gt;= -0.8) .&amp; (x .&lt;= -0.6)
+u0_vec[idx] .= (1 / 6) .* (G(x[idx], β, z - δ) .+ 4 .* G(x[idx], β, z) .+ G(x[idx], β, z + δ))
+
+# Heaviside step at x in [-0.4, -0.2]
+idx = (x .&gt;= -0.4) .&amp; (x .&lt;= -0.2)
+u0_vec[idx] .= 1.0
+
+# Piecewise linear ramp at x in [0, 0.2]
+# Triangular spike at x=0.1, base width 0.2
+idx = abs.(x .- 0.1) .&lt;= 0.1
+u0_vec[idx] .= 1 .- 10 .* abs.(x[idx] .- 0.1)
+
+# Elliptic/smooth bell at x in [0.4, 0.6]
+idx = (x .&gt;= 0.4) .&amp; (x .&lt;= 0.6)
+u0_vec[idx] .= (1 / 6) .* (F(x[idx], α, a - δ) .+ 4 .* F(x[idx], α, a) .+ F(x[idx], α, a + δ))
+
+
+u = copy(u0_vec)
+
+# fix here boundary to periodic when equal to 2
+# staggering = true means that the advection velocity is defined on the sides of the cells and should be of size nx+1 compared to the scalar field u.
+# Multithreading to false means that the computations will be done on a single thread.
+# Set to true to enable multithreading if the Julia session was started with multiple threads (e.g. `julia -t 4`).
+weno = WENOScheme(u; boundary = (2, 2), stag = true, multithreading = false)
+
+# advection velocity with size nx+1 for staggered grid (here constant)
+a = (; x = ones(nx + 1))
+
+# grid size
+Δx = x[2] - x[1]
+Δt = CFL * Δx^(5 / 3)
+
+tmax = period * (Lx + Δx) / maximum(abs.(a.x))
+
+t = 0
+
+while t &lt; tmax
+    # take as input the scalar field u, the advection velocity a as a NamedTuple,
+    # the WENO scheme struct weno, the time step Δt and the grid size Δx
+    WENO_step!(u, a, weno, Δt, Δx)
+
+    t += Δt
+
+    if t + Δt &gt; tmax
+        Δt = tmax - t
+    end
+end
+
+f = Figure(size = (800, 600), dpi = 400)
+ax = Axis(f[1, 1], title = &quot;1D linear advection after $period periods&quot;, xlabel = &quot;x&quot;, ylabel = &quot;u&quot;)
+lines!(ax, x, u0_vec, label = &quot;Exact&quot;, linestyle = :dash, color = :red)
+scatter!(ax, x, u, label = &quot;WENO5&quot;)
+xlims!(ax, x_min, x_max)
+axislegend(ax)
+display(f)</code></pre><p>which outputs:</p><p><img src="../assets/1D_linear_advection.png" alt="1D advection"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../background/">Background »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.15.0 on <span class="colophon-date" title="Wednesday 12 November 2025 19:16">Wednesday 12 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
