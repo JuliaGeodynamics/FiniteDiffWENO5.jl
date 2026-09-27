@@ -140,7 +140,7 @@ import FiniteDiffWENO5: validate_multiphase_boundary, validate_multiphase_inflow
         east = PrescribedInflowBC((0.6, 0.1, 0.3))
         scheme = MultiphaseWENOScheme(phases; boundary = (west, east), stag = true)
 
-        apply_multiphase_inflow_boundaries!(scheme.fl, scheme.fr, scheme.boundary)
+        apply_multiphase_inflow_boundaries!(scheme.fl, scheme.fr, scheme.boundary, scheme.extent)
         @test [scheme.fl.x[k][begin] for k in 1:3] == [0.2, 0.3, 0.5]
         @test [scheme.fr.x[k][end] for k in 1:3] == [0.6, 0.1, 0.3]
         # interior face states are untouched
@@ -153,7 +153,7 @@ import FiniteDiffWENO5: validate_multiphase_boundary, validate_multiphase_inflow
 
         # non-inflow faces install nothing
         plain = MultiphaseWENOScheme(phases; boundary = (PeriodicBC(), ExtrapolateBC()))
-        apply_multiphase_inflow_boundaries!(plain.fl, plain.fr, plain.boundary)
+        apply_multiphase_inflow_boundaries!(plain.fl, plain.fr, plain.boundary, plain.extent)
         @test all(all(iszero, f) for f in plain.fl.x)
         @test all(all(iszero, f) for f in plain.fr.x)
     end
@@ -165,10 +165,10 @@ import FiniteDiffWENO5: validate_multiphase_boundary, validate_multiphase_inflow
         # dimensional mismatch is a MethodError.
         bc = PrescribedInflowBC((0.2, 0.3, 0.5))
         matrices = ntuple(_ -> zeros(3, 3), 3)
-        @test_throws MethodError FiniteDiffWENO5.apply_multiphase_lower_inflow!(matrices, bc)
+        @test_throws MethodError FiniteDiffWENO5.apply_multiphase_axis_inflow!(matrices, bc)
 
         vectors = ntuple(_ -> zeros(3), 3)
-        @test_throws MethodError FiniteDiffWENO5.apply_multiphase_x_lower_inflow!(vectors, bc)
+        @test_throws MethodError FiniteDiffWENO5.apply_multiphase_axis_inflow!(vectors, bc)
     end
 
     @testset "2D and 3D installation" begin
@@ -179,7 +179,7 @@ import FiniteDiffWENO5: validate_multiphase_boundary, validate_multiphase_inflow
         s2 = MultiphaseWENOScheme(
             phases2; boundary = AdvectionBC(west = west, east = ExtrapolateBC()), stag = true
         )
-        apply_multiphase_inflow_boundaries!(s2.fl, s2.fr, s2.boundary)
+        apply_multiphase_inflow_boundaries!(s2.fl, s2.fr, s2.boundary, s2.extent)
         for j in 1:ny
             @test s2.fl.x[1][begin, j] == 0.2
             @test s2.fl.x[2][begin, j] == p2[j]
@@ -196,7 +196,7 @@ import FiniteDiffWENO5: validate_multiphase_boundary, validate_multiphase_inflow
                 ExtrapolateBC(), bot, ExtrapolateBC(),
             ),
         )
-        apply_multiphase_inflow_boundaries!(s3.fl, s3.fr, s3.boundary)
+        apply_multiphase_inflow_boundaries!(s3.fl, s3.fr, s3.boundary, s3.extent)
         @test all(s3.fl.z[1][:, :, begin] .== 0.35)
         @test all(s3.fl.z[2][:, :, begin] .== 0.65)
         @test all(iszero, s3.fl.x[1])

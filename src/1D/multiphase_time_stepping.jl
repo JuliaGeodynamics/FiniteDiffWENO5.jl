@@ -41,6 +41,7 @@ function WENO_step!(
     valNP = Val(NP)
 
     # stage 1
+    sync_stage!(scheme, phases)
     multiphase_WENO_flux!(phases, scheme, nx)
     multiphase_material_semi_discretisation!(du, voperator, scheme, Δx_)
     @inbounds @maybe_threads multithreading for i in axes(ut[1], 1)
@@ -53,6 +54,7 @@ function WENO_step!(
     end
 
     # stage 2
+    sync_stage!(scheme, ut)
     multiphase_WENO_flux!(ut, scheme, nx)
     multiphase_material_semi_discretisation!(du, voperator, scheme, Δx_)
     @inbounds @maybe_threads multithreading for i in axes(ut[1], 1)
@@ -66,6 +68,7 @@ function WENO_step!(
     end
 
     # stage 3
+    sync_stage!(scheme, ut)
     multiphase_WENO_flux!(ut, scheme, nx)
     multiphase_material_semi_discretisation!(du, voperator, scheme, Δx_)
     @inbounds @maybe_threads multithreading for i in axes(phases[1], 1)

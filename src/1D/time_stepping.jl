@@ -32,20 +32,24 @@ function WENO_step!(u::T, v::NamedTuple{(:x,), <:Tuple{<:AbstractVector{<:Real}}
         # Lax-Friedrichs speed α is likewise constant across all three stages, so
         # it is computed once here rather than by every `scalar_operator_1D!` call.
         voperator = prepare_velocity!(weno, v)
-        α = is_conservative(form) ? (lf_speeds === nothing ? lf_speed(voperator.x) : lf_speeds.x) : zero(eltype(u))
+        speeds = lf_speeds === nothing ? scheme_lf_speeds(weno, voperator) : lf_speeds
+        α = is_conservative(form) ? speeds.x : zero(eltype(u))
 
+        sync_stage!(weno, u)
         scalar_operator_1D!(du, u, voperator, weno, nx, Δx_, u_min, u_max, α)
 
         @inbounds @maybe_threads multithreading for i in axes(ut, 1)
             ut[i] = @muladd u[i] - Δt * du[i]
         end
 
+        sync_stage!(weno, ut)
         scalar_operator_1D!(du, ut, voperator, weno, nx, Δx_, u_min, u_max, α)
 
         @inbounds @maybe_threads multithreading for i in axes(ut, 1)
             ut[i] = @muladd 0.75 * u[i] + 0.25 * ut[i] - 0.25 * Δt * du[i]
         end
 
+        sync_stage!(weno, ut)
         scalar_operator_1D!(du, ut, voperator, weno, nx, Δx_, u_min, u_max, α)
 
         @inbounds @maybe_threads multithreading for i in axes(u, 1)

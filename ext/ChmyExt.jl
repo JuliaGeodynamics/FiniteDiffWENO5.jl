@@ -99,12 +99,16 @@ function WENOScheme(
 
     TFlux = typeof(fl)
     TArray = typeof(du)
+    extent = FiniteDiffWENO5.default_extent(sizes, FiniteDiffWENO5.default_global_periodic(boundary, N))
 
-    return WENOScheme{T, TArray, TFlux, typeof(vcenter), typeof(vperiodic), typeof(form_tag), typeof(boundary)}(
+    topology = FiniteDiffWENO5.NoTopology() # Chmy schemes use unpadded arrays
+    halo_buffers = FiniteDiffWENO5.EmptyHaloBuffers()
+
+    return WENOScheme{T, TArray, TFlux, typeof(vcenter), typeof(vperiodic), typeof(form_tag), typeof(boundary), typeof(extent), typeof(topology), typeof(halo_buffers)}(
         stag = stag, form = form_tag, boundary = boundary, multithreading = multithreading,
         lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut, vcenter = vcenter,
-        vperiodic = vperiodic,
-        upwind_mode = upwind_mode,
+        vperiodic = vperiodic, extent = extent, topology = topology,
+        upwind_mode = upwind_mode, halo_buffers = halo_buffers,
     )
 end
 
@@ -162,12 +166,17 @@ function MultiphaseWENOScheme(
         NamedTuple{labels}(ntuple(_ -> Field(backend, grid, Center(), T), direction_count)) :
         nothing
     vperiodic = stag ? FiniteDiffWENO5.velocity_periodicity(boundary, labels) : nothing
+    extent = FiniteDiffWENO5.default_extent(sizes, FiniteDiffWENO5.default_global_periodic(boundary, N))
+    topology = FiniteDiffWENO5.NoTopology() # Chmy schemes use unpadded arrays
+    halo_buffers = FiniteDiffWENO5.EmptyHaloBuffers()
 
     return MultiphaseWENOScheme{
         T, NP, typeof(du), typeof(fl), typeof(vcenter), typeof(vperiodic), typeof(boundary),
+        typeof(extent), typeof(topology), typeof(halo_buffers),
     }(
         stag = stag, boundary = boundary, multithreading = multithreading,
         fl = fl, fr = fr, du = du, ut = ut, vcenter = vcenter, vperiodic = vperiodic,
+        extent = extent, topology = topology, halo_buffers = halo_buffers,
     )
 end
 
@@ -321,6 +330,7 @@ function WENO_step!(
     end
     @assert get_backend(v.x) == backend
 
+    FiniteDiffWENO5.require_no_topology(scheme, "Chmy multiphase WENO_step!")
     launch = Launcher(arch, grid)
     (; fl, fr, ut, du, boundary, χ, γ, ζ, ϵ) = scheme
     nx = grid.axes[1].length
@@ -366,6 +376,7 @@ function WENO_step!(
     @assert get_backend(v.x) == backend
     @assert get_backend(v.y) == backend
 
+    FiniteDiffWENO5.require_no_topology(scheme, "Chmy multiphase WENO_step!")
     launch = Launcher(arch, grid)
     (; fl, fr, ut, du, boundary, χ, γ, ζ, ϵ) = scheme
     nx, ny = map(axis -> axis.length, grid.axes)
@@ -416,6 +427,7 @@ function WENO_step!(
     @assert get_backend(v.y) == backend
     @assert get_backend(v.z) == backend
 
+    FiniteDiffWENO5.require_no_topology(scheme, "Chmy multiphase WENO_step!")
     launch = Launcher(arch, grid)
     (; fl, fr, ut, du, boundary, χ, γ, ζ, ϵ) = scheme
     nx, ny, nz = map(axis -> axis.length, grid.axes)
@@ -480,6 +492,8 @@ function WENO_step!(u::T_field, v::Velocity1D, weno::FiniteDiffWENO5.WENOScheme,
 
     launch = Launcher(arch, grid)
 
+    FiniteDiffWENO5.require_no_topology(weno, "Chmy WENO_step!")
+
     #! do things here for halos and such for clusters for boundaries probably
 
     nx = grid.axes[1].length
@@ -513,9 +527,11 @@ function WENO_step!(u::T_field, v::Velocity1D, weno::FiniteDiffWENO5.WENOScheme,
         interior(u) .= @muladd inv(3.0) .* interior(u) .+ 2.0 / 3.0 .* interior(ut) .- 2.0 / 3.0 .* Δt .* interior(du)
     else
         vupwind = conservative ? v : prepare_velocity_chmy_1D!(weno, v, nx, grid, arch, launch)
-        launch(arch, grid, upwind_update_KA_1D! => (
-            u, vupwind, nx, Δx_, Δt, stag && conservative, boundary, grid,
-        ))
+        launch(
+            arch, grid, upwind_update_KA_1D! => (
+                u, vupwind, nx, Δx_, Δt, stag && conservative, boundary, grid,
+            )
+        )
     end
 
     return nothing
@@ -549,6 +565,8 @@ function WENO_step!(u::T_field, v::Velocity2D, weno::FiniteDiffWENO5.WENOScheme,
     @assert get_backend(u) == get_backend(v.y)
 
     launch = Launcher(arch, grid)
+
+    FiniteDiffWENO5.require_no_topology(weno, "Chmy WENO_step!")
 
     #! do things here for halos and such for clusters for boundaries probably
 
@@ -588,9 +606,11 @@ function WENO_step!(u::T_field, v::Velocity2D, weno::FiniteDiffWENO5.WENOScheme,
         interior(u) .= @muladd inv(3.0) .* interior(u) .+ 2.0 / 3.0 .* interior(ut) .- 2.0 / 3.0 .* Δt .* interior(du)
     else
         vupwind = conservative ? v : prepare_velocity_chmy_2D!(weno, v, nx, ny, grid, arch, launch)
-        launch(arch, grid, upwind_update_KA_2D! => (
-            u, vupwind, nx, ny, Δx_, Δy_, Δt, stag && conservative, boundary, grid,
-        ))
+        launch(
+            arch, grid, upwind_update_KA_2D! => (
+                u, vupwind, nx, ny, Δx_, Δy_, Δt, stag && conservative, boundary, grid,
+            )
+        )
     end
 
     return nothing
@@ -627,6 +647,8 @@ function WENO_step!(u::T_field, v::Velocity3D, weno::FiniteDiffWENO5.WENOScheme,
     @assert get_backend(u) == get_backend(v.z)
 
     launch = Launcher(arch, grid)
+
+    FiniteDiffWENO5.require_no_topology(weno, "Chmy WENO_step!")
 
     #! do things here for halos and such for clusters for boundaries probably
 
@@ -671,9 +693,11 @@ function WENO_step!(u::T_field, v::Velocity3D, weno::FiniteDiffWENO5.WENOScheme,
         interior(u) .= @muladd inv(3.0) .* interior(u) .+ 2.0 / 3.0 .* interior(ut) .- 2.0 / 3.0 .* Δt .* interior(du)
     else
         vupwind = conservative ? v : prepare_velocity_chmy_3D!(weno, v, nx, ny, nz, grid, arch, launch)
-        launch(arch, grid, upwind_update_KA_3D! => (
-            u, vupwind, nx, ny, nz, Δx_, Δy_, Δz_, Δt, stag && conservative, boundary, grid,
-        ))
+        launch(
+            arch, grid, upwind_update_KA_3D! => (
+                u, vupwind, nx, ny, nz, Δx_, Δy_, Δz_, Δt, stag && conservative, boundary, grid,
+            )
+        )
     end
 
     return nothing

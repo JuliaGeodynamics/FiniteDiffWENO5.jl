@@ -28,24 +28,28 @@ function WENO_step!(u::T, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<
     (; ut, du, stag, fl, fr, multithreading, upwind_mode, form) = weno
 
     if !upwind_mode
-        # Velocity is prepared once, outside the three RK stages. The
-        # Lax-Friedrichs speeds are likewise constant across all three stages.
+        # Prepare velocity and collective LF speeds once for all RK stages.
         voperator = prepare_velocity!(weno, v)
         conservative = is_conservative(form)
-        αx = conservative ? (lf_speeds === nothing ? lf_speed(voperator.x) : lf_speeds.x) : zero(eltype(u))
-        αy = conservative ? (lf_speeds === nothing ? lf_speed(voperator.y) : lf_speeds.y) : zero(eltype(u))
+        speeds = lf_speeds === nothing ? scheme_lf_speeds(weno, voperator) : lf_speeds
+        αx = conservative ? speeds.x : zero(eltype(u))
+        αy = conservative ? speeds.y : zero(eltype(u))
+
+        sync_stage!(weno, u)
         scalar_operator_2D!(du, u, voperator, weno, nx, ny, Δx_, Δy_, u_min, u_max, αx, αy)
 
         @inbounds @maybe_threads multithreading for I in CartesianIndices(ut)
             ut[I] = @muladd u[I] - Δt * du[I]
         end
 
+        sync_stage!(weno, ut)
         scalar_operator_2D!(du, ut, voperator, weno, nx, ny, Δx_, Δy_, u_min, u_max, αx, αy)
 
         @inbounds @maybe_threads multithreading for I in CartesianIndices(ut)
             ut[I] = @muladd 0.75 * u[I] + 0.25 * ut[I] - 0.25 * Δt * du[I]
         end
 
+        sync_stage!(weno, ut)
         scalar_operator_2D!(du, ut, voperator, weno, nx, ny, Δx_, Δy_, u_min, u_max, αx, αy)
 
         @inbounds @maybe_threads multithreading for I in CartesianIndices(u)

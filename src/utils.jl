@@ -35,6 +35,8 @@ end
         return clamp(i - d, 1, nx)   # Dirichlet
     elseif b == 1
         return max(i - d, 1)         # Neumann
+    elseif b == 3
+        return max(i - d, 1)         # ProcessBC (interior seam): clamp, like Neumann
     else
         return mod1(i - d, nx)       # Periodic
     end
@@ -45,9 +47,72 @@ end
         return clamp(i + d, 1, nx)   # Dirichlet
     elseif b == 1
         return min(i + d, nx)        # Neumann
+    elseif b == 3
+        return min(i + d, nx)        # ProcessBC (interior seam): clamp, like Neumann
     else
         return mod1(i + d, nx)       # Periodic
     end
+end
+
+"""
+    PaddedExtent{N}
+
+Bookkeeping for how a `WENOScheme`/`MultiphaseWENOScheme` buffer's *allocated*
+extent relates to its *physical* (owned) extent.
+
+- `owned`: physical (owned) cell count per axis.
+- `pad`: halo width per axis (0 for every axis on an unpadded/default scheme).
+- `global_size`: global cell count per axis — equals `owned` outside a
+  distributed context; recorded so the ENO5-vs-linear interpolation choice can
+  key off the true global extent instead of the padded allocated one.
+- `global_periodic`: the *serial* (physical) periodicity per axis — distinct
+  from a scheme's `vperiodic`, which is forced `false` on every padded axis.
+- `geometry`: `:cell` (cell lattice) or `:vertex` (vertex lattice).
+
+Every existing serial construction gets the default: `owned == size(c0)`,
+`pad = 0` on every axis, `global_size == owned`, `geometry = :cell`.
+"""
+struct PaddedExtent{N}
+    owned::NTuple{N, Int}
+    pad::NTuple{N, Int}
+    global_size::NTuple{N, Int}
+    global_periodic::NTuple{N, Bool}
+    geometry::Symbol
+end
+
+"""Default extent for an unpadded scheme: no padding, physical extent equals
+the allocated extent, cell geometry."""
+default_extent(sizes::NTuple{N, Int}, global_periodic::NTuple{N, Bool}) where {N} =
+    PaddedExtent{N}(sizes, ntuple(_ -> 0, N), sizes, global_periodic, :cell)
+
+"""
+    _resolve_padded_extent(sizes, halo, boundary, caller)
+
+Shared `padded_weno_scheme`/`padded_multiphase_scheme` preamble: validate
+`boundary`'s face count/types and the owned extent, returning `(faces,
+owned)`. `caller` names the public function in error messages.
+"""
+function _resolve_padded_extent(sizes::NTuple{N, Int}, halo::NTuple{N, Int}, boundary, caller::Symbol) where {N}
+    faces = boundary_faces(boundary)
+    length(faces) == 2N || throw(
+        ArgumentError(
+            "boundary must contain $(2N) face conditions for $(N)D data, got $(length(faces))"
+        )
+    )
+    all(b -> b isa AbstractAdvectionBoundary, faces) || throw(
+        ArgumentError(
+            "$caller expects an already-resolved boundary tuple of " *
+                "AbstractAdvectionBoundary instances, got $(typeof(faces))"
+        )
+    )
+
+    owned = sizes .- 2 .* halo
+    all(>=(0), owned) || throw(
+        ArgumentError(
+            "halo $halo exceeds the allocated size $sizes — owned extent would be $owned"
+        )
+    )
+    return faces, owned
 end
 
 macro maybe_threads(flag, ex)

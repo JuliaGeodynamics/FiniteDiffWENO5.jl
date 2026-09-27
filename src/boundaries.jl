@@ -18,6 +18,16 @@ struct PrescribedInflowBC{T} <: AbstractAdvectionBoundary
     value::T
 end
 
+"""
+Interior process seam. Keep the global indexing policy for reconstruction;
+the halo prevents owned stencils from wrapping or clamping. Physical ghost
+filling and inflow installation skip this boundary. Users cannot select it.
+"""
+struct ProcessBC{B <: Union{PeriodicBC, ExtrapolateBC}} <: AbstractAdvectionBoundary
+    indexing::B
+end
+ProcessBC() = ProcessBC(ExtrapolateBC())
+
 """A dimension-independent wrapper around an ordered tuple of face conditions."""
 struct AdvectionBC{B <: Tuple}
     faces::B
@@ -39,6 +49,7 @@ boundary_faces(boundary::AdvectionBC) = boundary.faces
 boundary_faces(boundary::Tuple) = boundary
 
 valid_boundary(boundary::AbstractAdvectionBoundary) = true
+valid_boundary(boundary::ProcessBC) = false
 valid_boundary(boundary::Integer) = boundary in (0, 1, 2)
 valid_boundary(boundary) = false
 
@@ -85,10 +96,8 @@ end
 """
     normalize_boundary_faces(boundary, N)
 
-Check the face count and entry kinds, then map legacy integer codes onto typed boundary
-conditions. This is the half of `validate_boundary` that does not inspect the *value*
-carried by a `PrescribedInflowBC`, so it can be shared by the scalar route and by the
-multiphase route, whose inflow values are tuples that the scalar validator rejects.
+Check faces and map legacy codes to typed boundaries without validating inflow
+values; scalar and multiphase validation share this step.
 """
 function normalize_boundary_faces(boundary, N)
     faces = boundary_faces(boundary)
@@ -125,125 +134,176 @@ inflow_value(boundary::PrescribedInflowBC{<:Real}, indices...) = boundary.value
 inflow_value(boundary::PrescribedInflowBC{<:AbstractArray}, indices...) =
     boundary.value[indices...]
 
-# Typed boundaries use either periodic indexing or the existing constant
-# extrapolation. Prescribed inflow values are installed directly into the
-# exterior upwind state at the physical face after reconstruction.
+# Inflow values are installed after reconstruction.
 left_index(i, d, nx, ::PeriodicBC) = mod1(i - d, nx)
 right_index(i, d, nx, ::PeriodicBC) = mod1(i + d, nx)
 left_index(i, d, nx, ::ExtrapolateBC) = max(i - d, 1)
 right_index(i, d, nx, ::ExtrapolateBC) = min(i + d, nx)
 left_index(i, d, nx, ::PrescribedInflowBC) = max(i - d, 1)
 right_index(i, d, nx, ::PrescribedInflowBC) = min(i + d, nx)
+# Keep scratch ghost-face reads in bounds under `@inbounds`.
+left_index(i, d, nx, b::ProcessBC) = left_index(i, d, nx, b.indexing)
+right_index(i, d, nx, b::ProcessBC) = right_index(i, d, nx, b.indexing)
 
-apply_lower_inflow!(flux, ::Any) = nothing
-apply_upper_inflow!(flux, ::Any) = nothing
+# Install inflow flux at physical faces and across owned tangential entries.
+# The inflow value array is indexed relative to the owned extent.
 
-function apply_lower_inflow!(flux::AbstractVector, boundary::PrescribedInflowBC)
-    flux[begin] = inflow_value(boundary)
-    return nothing
-end
+"""
+    _inflow_ranges(extent::PaddedExtent{N}, d, upper)
 
-function apply_upper_inflow!(flux::AbstractVector, boundary::PrescribedInflowBC)
-    flux[end] = inflow_value(boundary)
-    return nothing
-end
-
-function apply_x_lower_inflow!(flux, boundary::PrescribedInflowBC)
-    @inbounds for k in axes(flux, 3), j in axes(flux, 2)
-        flux[begin, j, k] = inflow_value(boundary, j, k)
+Index ranges for axis `d`'s (`upper` ? high : low) face: `d` fixed to one
+index, every other axis spanning its owned entries.
+"""
+function _inflow_ranges(extent::PaddedExtent{N}, d, upper) where {N}
+    face = upper ? extent.pad[d] + extent.owned[d] + 1 : extent.pad[d] + 1
+    return ntuple(N) do ax
+        ax == d ? (face:face) : (extent.pad[ax] + 1):(extent.pad[ax] + extent.owned[ax])
     end
-    return nothing
 end
-apply_x_lower_inflow!(flux, ::Any) = nothing
 
-function apply_x_lower_inflow!(flux::AbstractMatrix, boundary::PrescribedInflowBC)
-    @inbounds for j in axes(flux, 2)
-        flux[begin, j] = inflow_value(boundary, j)
+"""
+    _tangential_offset(I::CartesianIndex, extent::PaddedExtent{N}, d)
+
+`I`'s coordinates on every axis but `d`, each shifted to a 1-based owned-window
+offset — the argument order `inflow_value`/`multiphase_inflow_value` expect.
+"""
+function _tangential_offset(I::CartesianIndex, extent::PaddedExtent{N}, d) where {N}
+    return ntuple(N - 1) do k
+        axis = k < d ? k : k + 1
+        I[axis] - extent.pad[axis]
     end
-    return nothing
 end
 
-function apply_x_upper_inflow!(flux, boundary::PrescribedInflowBC)
-    @inbounds for k in axes(flux, 3), j in axes(flux, 2)
-        flux[end, j, k] = inflow_value(boundary, j, k)
-    end
-    return nothing
-end
-apply_x_upper_inflow!(flux, ::Any) = nothing
+apply_axis_inflow!(flux, ::Any, extent, d, upper) = nothing
 
-function apply_x_upper_inflow!(flux::AbstractMatrix, boundary::PrescribedInflowBC)
-    @inbounds for j in axes(flux, 2)
-        flux[end, j] = inflow_value(boundary, j)
-    end
-    return nothing
-end
-
-function apply_y_lower_inflow!(flux, boundary::PrescribedInflowBC)
-    @inbounds for k in axes(flux, 3), i in axes(flux, 1)
-        flux[i, begin, k] = inflow_value(boundary, i, k)
-    end
-    return nothing
-end
-apply_y_lower_inflow!(flux, ::Any) = nothing
-
-function apply_y_lower_inflow!(flux::AbstractMatrix, boundary::PrescribedInflowBC)
-    @inbounds for i in axes(flux, 1)
-        flux[i, begin] = inflow_value(boundary, i)
+function apply_axis_inflow!(
+        flux::AbstractArray{T, N}, boundary::PrescribedInflowBC, extent::PaddedExtent{N}, d, upper,
+    ) where {T, N}
+    @inbounds for I in CartesianIndices(_inflow_ranges(extent, d, upper))
+        flux[I] = inflow_value(boundary, _tangential_offset(I, extent, d)...)
     end
     return nothing
 end
 
-function apply_y_upper_inflow!(flux, boundary::PrescribedInflowBC)
-    @inbounds for k in axes(flux, 3), i in axes(flux, 1)
-        flux[i, end, k] = inflow_value(boundary, i, k)
+# Three per-arity methods, not one loop over `enumerate(keys(fl))`: `boundary`
+# is a heterogeneous tuple, so a runtime-computed index into it (`boundary[2d-1]`)
+# is not type-stable and allocates (measured). Every index/field access below
+# is a compile-time literal instead.
+function apply_inflow_boundaries!(fl::NamedTuple{(:x,)}, fr, boundary, extent)
+    apply_axis_inflow!(fl.x, boundary[1], extent, 1, false)
+    apply_axis_inflow!(fr.x, boundary[2], extent, 1, true)
+    return nothing
+end
+
+function apply_inflow_boundaries!(fl::NamedTuple{(:x, :y)}, fr, boundary, extent)
+    apply_axis_inflow!(fl.x, boundary[1], extent, 1, false)
+    apply_axis_inflow!(fr.x, boundary[2], extent, 1, true)
+    apply_axis_inflow!(fl.y, boundary[3], extent, 2, false)
+    apply_axis_inflow!(fr.y, boundary[4], extent, 2, true)
+    return nothing
+end
+
+function apply_inflow_boundaries!(fl::NamedTuple{(:x, :y, :z)}, fr, boundary, extent)
+    apply_axis_inflow!(fl.x, boundary[1], extent, 1, false)
+    apply_axis_inflow!(fr.x, boundary[2], extent, 1, true)
+    apply_axis_inflow!(fl.y, boundary[3], extent, 2, false)
+    apply_axis_inflow!(fr.y, boundary[4], extent, 2, true)
+    apply_axis_inflow!(fl.z, boundary[5], extent, 3, false)
+    apply_axis_inflow!(fr.z, boundary[6], extent, 3, true)
+    return nothing
+end
+
+# Fill physical ghosts with serial clamp or wrap values. Prescribed inflow
+# changes boundary fluxes, so ghost filling does not write its prescribed state.
+
+@inline _ghost_kind(::PeriodicBC) = :periodic
+@inline _ghost_kind(::ExtrapolateBC) = :extrapolate
+@inline _ghost_kind(::PrescribedInflowBC) = :extrapolate
+@inline _ghost_kind(::ProcessBC) = :none
+
+"""
+    _fill_ghost_axis!(a, d, pad, n_phys, owned_lo, owned_hi, lo_bc, hi_bc)
+
+Fill every entry of `a` outside `[owned_lo, owned_hi]` along axis `d`. Low
+positions (`< owned_lo`) use `lo_bc`, high positions (`> owned_hi`) use
+`hi_bc`. `ExtrapolateBC`/`PrescribedInflowBC` clamp to the nearest owned edge;
+`PeriodicBC` wraps modulo `n_phys` cells starting at padded index `pad + 1`;
+`ProcessBC` is left untouched (its ghosts come from a halo exchange).
+"""
+function _fill_ghost_axis!(a::AbstractArray{T, N}, d, pad, n_phys, owned_lo, owned_hi, lo_bc, hi_bc) where {T, N}
+    lo_kind = _ghost_kind(lo_bc)
+    hi_kind = _ghost_kind(hi_bc)
+    (lo_kind === :none && hi_kind === :none) && return a
+    @inbounds for I in CartesianIndices(a)
+        g = I[d]
+        owned_lo <= g <= owned_hi && continue
+        kind = g < owned_lo ? lo_kind : hi_kind
+        kind === :none && continue
+        src = kind === :periodic ? mod1(g - pad, n_phys) + pad : (g < owned_lo ? owned_lo : owned_hi)
+        Isrc = CartesianIndex(ntuple(k -> k == d ? src : I[k], N))
+        a[I] = a[Isrc]
     end
-    return nothing
+    return a
 end
-apply_y_upper_inflow!(flux, ::Any) = nothing
 
-function apply_y_upper_inflow!(flux::AbstractMatrix, boundary::PrescribedInflowBC)
-    @inbounds for i in axes(flux, 1)
-        flux[i, end] = inflow_value(boundary, i)
+"""
+    fill_physical_ghosts!(a::AbstractArray, extent::PaddedExtent, boundary)
+
+Cell-centred ghost fill: for each axis with nonzero pad, write the pad
+entries of `a` that the resolved `boundary` implies on that axis' two faces.
+`a` may be the advected field, `ut`, or a cell-centred (`stag = false`)
+velocity component — the fill never depends on what the array represents,
+only on the boundary kind, which is what makes it safe to reuse across all
+of them.
+"""
+function fill_physical_ghosts!(a::AbstractArray{T, N}, extent::PaddedExtent{N}, boundary) where {T, N}
+    faces = boundary_faces(boundary)
+    for d in 1:N
+        pad = extent.pad[d]
+        pad == 0 && continue
+        n_phys = extent.owned[d]
+        owned_lo = pad + 1
+        owned_hi = pad + n_phys
+        _fill_ghost_axis!(a, d, pad, n_phys, owned_lo, owned_hi, faces[2d - 1], faces[2d])
     end
-    return nothing
+    return a
 end
 
-function apply_z_lower_inflow!(flux, boundary::PrescribedInflowBC)
-    @inbounds for j in axes(flux, 2), i in axes(flux, 1)
-        flux[i, j, begin] = inflow_value(boundary, i, j)
+"""
+    fill_physical_ghosts!(v::NamedTuple, extent::PaddedExtent, boundary)
+
+Face-staggered ghost fill for a velocity `NamedTuple` whose component at
+position `direction` (`:x`, `:y`, `:z`, ...) carries one extra entry on the
+high side of its own normal axis (`direction`). Every axis other than a
+component's own normal axis is filled exactly like the cell-centred case.
+Along its own normal axis, a periodic face treats the physical `n_own + 1`-th
+face as the duplicate of physical face 1 — written by the wrap, never read as
+independent data — matching how the serial ENO5 interpolation ignores
+`face[n+1]` under periodicity.
+"""
+function fill_physical_ghosts!(v::NamedTuple, extent::PaddedExtent{N}, boundary) where {N}
+    faces = boundary_faces(boundary)
+    names = keys(v)
+    for direction in eachindex(names)
+        component = getproperty(v, names[direction])
+        for d in 1:N
+            pad = extent.pad[d]
+            pad == 0 && continue
+            n_phys = extent.owned[d]
+            lo_bc, hi_bc = faces[2d - 1], faces[2d]
+            owned_lo = pad + 1
+            # A component is face-staggered along its OWN axis only if it
+            # structurally carries the extra entry there (`size == n_phys +
+            # 2·pad + 1`) — e.g. the raw face velocity passed into
+            # `prepare_velocity!`. A NamedTuple of otherwise cell-centred
+            # arrays (e.g. `weno.vcenter`, which shares `du`'s shape on every
+            # axis) must NOT take the extra-face branch merely because it is
+            # a NamedTuple; dispatch on this structural check, not on type.
+            own_axis_staggered = d == direction && size(component, d) == n_phys + 2pad + 1
+            extra_face = own_axis_staggered && !(hi_bc isa PeriodicBC)
+            owned_hi = pad + n_phys + (extra_face ? 1 : 0)
+            _fill_ghost_axis!(component, d, pad, n_phys, owned_lo, owned_hi, lo_bc, hi_bc)
+        end
     end
-    return nothing
-end
-apply_z_lower_inflow!(flux, ::Any) = nothing
-
-function apply_z_upper_inflow!(flux, boundary::PrescribedInflowBC)
-    @inbounds for j in axes(flux, 2), i in axes(flux, 1)
-        flux[i, j, end] = inflow_value(boundary, i, j)
-    end
-    return nothing
-end
-apply_z_upper_inflow!(flux, ::Any) = nothing
-
-function apply_inflow_boundaries!(fl::NamedTuple{(:x,)}, fr, boundary)
-    apply_lower_inflow!(fl.x, boundary[1])
-    apply_upper_inflow!(fr.x, boundary[2])
-    return nothing
-end
-
-function apply_inflow_boundaries!(fl::NamedTuple{(:x, :y)}, fr, boundary)
-    apply_x_lower_inflow!(fl.x, boundary[1])
-    apply_x_upper_inflow!(fr.x, boundary[2])
-    apply_y_lower_inflow!(fl.y, boundary[3])
-    apply_y_upper_inflow!(fr.y, boundary[4])
-    return nothing
-end
-
-function apply_inflow_boundaries!(fl::NamedTuple{(:x, :y, :z)}, fr, boundary)
-    apply_x_lower_inflow!(fl.x, boundary[1])
-    apply_x_upper_inflow!(fr.x, boundary[2])
-    apply_y_lower_inflow!(fl.y, boundary[3])
-    apply_y_upper_inflow!(fr.y, boundary[4])
-    apply_z_lower_inflow!(fl.z, boundary[5])
-    apply_z_upper_inflow!(fr.z, boundary[6])
-    return nothing
+    return v
 end

@@ -78,12 +78,16 @@ function WENOScheme(
 
     TFlux = typeof(fl)
     TArray = typeof(du)
+    extent = FiniteDiffWENO5.default_extent(sizes, FiniteDiffWENO5.default_global_periodic(boundary, N))
 
-    return WENOScheme{T, TArray, TFlux, typeof(vcenter), typeof(vperiodic), typeof(form_tag), typeof(boundary)}(
+    topology = FiniteDiffWENO5.NoTopology() # KA schemes use unpadded arrays
+    halo_buffers = FiniteDiffWENO5.EmptyHaloBuffers()
+
+    return WENOScheme{T, TArray, TFlux, typeof(vcenter), typeof(vperiodic), typeof(form_tag), typeof(boundary), typeof(extent), typeof(topology), typeof(halo_buffers)}(
         stag = stag, form = form_tag, boundary = boundary, multithreading = multithreading,
         lim_ZS = lim_ZS, fl = fl, fr = fr, du = du, ut = ut, vcenter = vcenter,
-        vperiodic = vperiodic,
-        upwind_mode = upwind_mode,
+        vperiodic = vperiodic, extent = extent, topology = topology,
+        upwind_mode = upwind_mode, halo_buffers = halo_buffers,
     )
 end
 
@@ -159,12 +163,17 @@ function MultiphaseWENOScheme(
     ut = ntuple(_ -> backend_zeros(sizes), valNP)
     vcenter = stag ? NamedTuple{labels}(ntuple(_ -> backend_zeros(sizes), min(N, 3))) : nothing
     vperiodic = stag ? FiniteDiffWENO5.velocity_periodicity(boundary, labels) : nothing
+    extent = FiniteDiffWENO5.default_extent(sizes, FiniteDiffWENO5.default_global_periodic(boundary, N))
+    topology = FiniteDiffWENO5.NoTopology() # KA schemes use unpadded arrays
+    halo_buffers = FiniteDiffWENO5.EmptyHaloBuffers()
 
     return MultiphaseWENOScheme{
         T, NP, typeof(du), typeof(fl), typeof(vcenter), typeof(vperiodic), typeof(boundary),
+        typeof(extent), typeof(topology), typeof(halo_buffers),
     }(
         stag = stag, boundary = boundary, multithreading = multithreading,
         fl = fl, fr = fr, du = du, ut = ut, vcenter = vcenter, vperiodic = vperiodic,
+        extent = extent, topology = topology, halo_buffers = halo_buffers,
     )
 end
 
@@ -198,6 +207,8 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x,), <:Tuple{<:AbstractArray{<:Real
 
     @assert get_backend(u) == backend
     @assert get_backend(v.x) == backend
+
+    FiniteDiffWENO5.require_no_topology(weno, "KernelAbstractions WENO_step!")
 
     #! do things here for halos and such for clusters for boundaries probably
 
@@ -282,6 +293,8 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArra
     @assert get_backend(u) == backend
     @assert get_backend(v.x) == backend
     @assert get_backend(v.y) == backend
+
+    FiniteDiffWENO5.require_no_topology(weno, "KernelAbstractions WENO_step!")
 
     #! do things here for halos and such for clusters for boundaries probably
 
@@ -373,6 +386,8 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstract
     @assert get_backend(v.x) == backend
     @assert get_backend(v.y) == backend
     @assert get_backend(v.z) == backend
+
+    FiniteDiffWENO5.require_no_topology(weno, "KernelAbstractions WENO_step!")
 
     #! do things here for halos and such for clusters for boundaries probably
 

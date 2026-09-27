@@ -127,184 +127,55 @@ validation guarantees no other component kind reaches this function.
 
 # --- installation into the face buffers -------------------------------------------
 #
-# These deliberately do NOT reuse `apply_inflow_boundaries!` and its `apply_*_inflow!`
-# family. Those dispatch on `flux::AbstractVector`/`AbstractMatrix` and fall back to
-# `apply_lower_inflow!(flux, ::Any) = nothing`, so an `NTuple` of phase arrays would match
-# only the fallback and the prescribed composition would be discarded with no error.
+# This deliberately does NOT reuse `apply_inflow_boundaries!`/`apply_axis_inflow!`.
+# Those fall back to `apply_axis_inflow!(flux, ::Any, extent, d, upper) = nothing` for
+# any unhandled `flux` type, so an `NTuple` of phase arrays would match only the
+# fallback and the prescribed composition would be discarded with no error.
 #
-# Here the no-op methods dispatch on the *boundary* being a non-inflow condition, so a
+# Here the no-op method dispatches on the *boundary* being a non-inflow condition, so a
 # `PrescribedInflowBC` paired with a wrong-shaped buffer raises a `MethodError` instead of
 # silently doing nothing.
 
-const _NoInflowBC = Union{PeriodicBC, ExtrapolateBC}
+const _NoInflowBC = Union{PeriodicBC, ExtrapolateBC, ProcessBC}
 
-apply_multiphase_lower_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_upper_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_x_lower_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_x_upper_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_y_lower_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_y_upper_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_z_lower_inflow!(flux, ::_NoInflowBC) = nothing
-apply_multiphase_z_upper_inflow!(flux, ::_NoInflowBC) = nothing
+apply_multiphase_axis_inflow!(flux, ::_NoInflowBC, extent, d, upper) = nothing
 
-function apply_multiphase_lower_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
-    ) where {M, A <: AbstractVector}
-    for k in 1:(M + 1)
-        @inbounds flux[k][begin] = multiphase_inflow_value(bc, k)
-    end
-    return nothing
-end
-
-function apply_multiphase_upper_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
-    ) where {M, A <: AbstractVector}
-    for k in 1:(M + 1)
-        @inbounds flux[k][end] = multiphase_inflow_value(bc, k)
-    end
-    return nothing
-end
-
-function apply_multiphase_x_lower_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
-    ) where {M, A <: AbstractMatrix}
+function apply_multiphase_axis_inflow!(
+        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC, extent::PaddedExtent{N}, d, upper,
+    ) where {M, N, A <: AbstractArray{<:Any, N}}
+    ranges = _inflow_ranges(extent, d, upper)
     for k in 1:(M + 1)
         f = @inbounds flux[k]
-        @inbounds for j in axes(f, 2)
-            f[begin, j] = multiphase_inflow_value(bc, k, j)
+        @inbounds for I in CartesianIndices(ranges)
+            f[I] = multiphase_inflow_value(bc, k, _tangential_offset(I, extent, d)...)
         end
     end
     return nothing
 end
 
-function apply_multiphase_x_upper_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
-    ) where {M, A <: AbstractMatrix}
-    for k in 1:(M + 1)
-        f = @inbounds flux[k]
-        @inbounds for j in axes(f, 2)
-            f[end, j] = multiphase_inflow_value(bc, k, j)
-        end
-    end
+# Three per-arity methods, not one loop — same reasoning as
+# `apply_inflow_boundaries!` in `boundaries.jl` (a runtime index into the
+# heterogeneous `boundary` tuple allocates).
+function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x,)}, fr, boundary, extent)
+    apply_multiphase_axis_inflow!(fl.x, boundary[1], extent, 1, false)
+    apply_multiphase_axis_inflow!(fr.x, boundary[2], extent, 1, true)
     return nothing
 end
 
-function apply_multiphase_y_lower_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
-    ) where {M, A <: AbstractMatrix}
-    for k in 1:(M + 1)
-        f = @inbounds flux[k]
-        @inbounds for i in axes(f, 1)
-            f[i, begin] = multiphase_inflow_value(bc, k, i)
-        end
-    end
+function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x, :y)}, fr, boundary, extent)
+    apply_multiphase_axis_inflow!(fl.x, boundary[1], extent, 1, false)
+    apply_multiphase_axis_inflow!(fr.x, boundary[2], extent, 1, true)
+    apply_multiphase_axis_inflow!(fl.y, boundary[3], extent, 2, false)
+    apply_multiphase_axis_inflow!(fr.y, boundary[4], extent, 2, true)
     return nothing
 end
 
-function apply_multiphase_y_upper_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
-    ) where {M, A <: AbstractMatrix}
-    for k in 1:(M + 1)
-        f = @inbounds flux[k]
-        @inbounds for i in axes(f, 1)
-            f[i, end] = multiphase_inflow_value(bc, k, i)
-        end
-    end
-    return nothing
-end
-
-function apply_multiphase_x_lower_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
-    ) where {M, A <: AbstractArray{<:Any, 3}}
-    for k in 1:(M + 1)
-        f = @inbounds flux[k]
-        @inbounds for m in axes(f, 3), j in axes(f, 2)
-            f[begin, j, m] = multiphase_inflow_value(bc, k, j, m)
-        end
-    end
-    return nothing
-end
-
-function apply_multiphase_x_upper_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
-    ) where {M, A <: AbstractArray{<:Any, 3}}
-    for k in 1:(M + 1)
-        f = @inbounds flux[k]
-        @inbounds for m in axes(f, 3), j in axes(f, 2)
-            f[end, j, m] = multiphase_inflow_value(bc, k, j, m)
-        end
-    end
-    return nothing
-end
-
-function apply_multiphase_y_lower_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
-    ) where {M, A <: AbstractArray{<:Any, 3}}
-    for k in 1:(M + 1)
-        f = @inbounds flux[k]
-        @inbounds for m in axes(f, 3), i in axes(f, 1)
-            f[i, begin, m] = multiphase_inflow_value(bc, k, i, m)
-        end
-    end
-    return nothing
-end
-
-function apply_multiphase_y_upper_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
-    ) where {M, A <: AbstractArray{<:Any, 3}}
-    for k in 1:(M + 1)
-        f = @inbounds flux[k]
-        @inbounds for m in axes(f, 3), i in axes(f, 1)
-            f[i, end, m] = multiphase_inflow_value(bc, k, i, m)
-        end
-    end
-    return nothing
-end
-
-function apply_multiphase_z_lower_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
-    ) where {M, A <: AbstractArray{<:Any, 3}}
-    for k in 1:(M + 1)
-        f = @inbounds flux[k]
-        @inbounds for j in axes(f, 2), i in axes(f, 1)
-            f[i, j, begin] = multiphase_inflow_value(bc, k, i, j)
-        end
-    end
-    return nothing
-end
-
-function apply_multiphase_z_upper_inflow!(
-        flux::Tuple{A, Vararg{A, M}}, bc::PrescribedInflowBC,
-    ) where {M, A <: AbstractArray{<:Any, 3}}
-    for k in 1:(M + 1)
-        f = @inbounds flux[k]
-        @inbounds for j in axes(f, 2), i in axes(f, 1)
-            f[i, j, end] = multiphase_inflow_value(bc, k, i, j)
-        end
-    end
-    return nothing
-end
-
-function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x,)}, fr, boundary)
-    apply_multiphase_lower_inflow!(fl.x, boundary[1])
-    apply_multiphase_upper_inflow!(fr.x, boundary[2])
-    return nothing
-end
-
-function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x, :y)}, fr, boundary)
-    apply_multiphase_x_lower_inflow!(fl.x, boundary[1])
-    apply_multiphase_x_upper_inflow!(fr.x, boundary[2])
-    apply_multiphase_y_lower_inflow!(fl.y, boundary[3])
-    apply_multiphase_y_upper_inflow!(fr.y, boundary[4])
-    return nothing
-end
-
-function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x, :y, :z)}, fr, boundary)
-    apply_multiphase_x_lower_inflow!(fl.x, boundary[1])
-    apply_multiphase_x_upper_inflow!(fr.x, boundary[2])
-    apply_multiphase_y_lower_inflow!(fl.y, boundary[3])
-    apply_multiphase_y_upper_inflow!(fr.y, boundary[4])
-    apply_multiphase_z_lower_inflow!(fl.z, boundary[5])
-    apply_multiphase_z_upper_inflow!(fr.z, boundary[6])
+function apply_multiphase_inflow_boundaries!(fl::NamedTuple{(:x, :y, :z)}, fr, boundary, extent)
+    apply_multiphase_axis_inflow!(fl.x, boundary[1], extent, 1, false)
+    apply_multiphase_axis_inflow!(fr.x, boundary[2], extent, 1, true)
+    apply_multiphase_axis_inflow!(fl.y, boundary[3], extent, 2, false)
+    apply_multiphase_axis_inflow!(fr.y, boundary[4], extent, 2, true)
+    apply_multiphase_axis_inflow!(fl.z, boundary[5], extent, 3, false)
+    apply_multiphase_axis_inflow!(fr.z, boundary[6], extent, 3, true)
     return nothing
 end

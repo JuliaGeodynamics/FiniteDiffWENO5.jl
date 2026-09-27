@@ -11,7 +11,7 @@ limiter donors are the adjacent cell averages: the cell left of the face for `fl
 cell right of it for `fr`, matching the scalar Zhang-Shu convention.
 """
 function multiphase_WENO_flux!(state, scheme::MultiphaseWENOScheme{T, NP}, nx) where {T, NP}
-    (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading) = scheme
+    (; fl, fr, boundary, χ, γ, ζ, ϵ, multithreading, extent) = scheme
 
     bL = boundary[1]
     bR = boundary[2]
@@ -49,7 +49,7 @@ function multiphase_WENO_flux!(state, scheme::MultiphaseWENOScheme{T, NP}, nx) w
         end
     end
 
-    apply_multiphase_inflow_boundaries!(fl, fr, boundary)
+    apply_multiphase_inflow_boundaries!(fl, fr, boundary, extent)
     return nothing
 end
 

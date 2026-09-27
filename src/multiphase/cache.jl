@@ -1,81 +1,40 @@
-@kwdef struct MultiphaseWENOScheme{T, NP, TArray, TFlux, TVelocity, TPeriodicity, TBoundary} <: AbstractWENO
-    # upwind and downwind constants
+@kwdef struct MultiphaseWENOScheme{T, NP, TArray, TFlux, TVelocity, TPeriodicity, TBoundary, TExtent, TTopology, THaloBuffers} <: AbstractWENO
     γ::NTuple{3, T} = T.((0.1, 0.6, 0.3))
-    # betas' constants
     χ::NTuple{2, T} = T.((13 / 12, 1 / 4))
-    # stencil weights
     ζ::NTuple{5, T} = T.((1 / 3, 7 / 6, 11 / 6, 1 / 6, 5 / 6))
-    # tolerance to machine precision of the type T
     ϵ::T = eps(T)
-    # staggered grid or not (velocities on cell faces or cell centers)
     stag::Bool
-    # boundary conditions
     boundary::TBoundary
-    # multithreading
     multithreading::Bool
-    # per-phase fluxes as NamedTuples of NTuple{NP} arrays
     fl::TFlux
     fr::TFlux
-    # per-phase semi-discretisation of the advection term
     du::TArray
-    # per-phase temporary array for the time stepping
     ut::TArray
-    # cell-centred velocity, populated from staggered faces by ENO5 when required
     vcenter::TVelocity
-    # periodicity of the normal staggered velocity in each direction
     vperiodic::TPeriodicity
+    extent::TExtent
+    topology::TTopology = NoTopology()
+    halo_buffers::THaloBuffers = EmptyHaloBuffers()
 end
 
 """
     MultiphaseWENOScheme(phases::Tuple; boundary=nothing, stag=false, multithreading=true)
 
-Structure containing the WENO5-Z constants and per-phase buffers for the *simultaneous*
-advection of two or more material fractions constrained to the probability simplex,
-`0 ≤ ϕₖ ≤ 1` and `Σₖϕₖ = 1`.
-
-Unlike `WENOScheme` with a tuple of fields — which advects each field sequentially with
-its own nonlinear weights and therefore does not preserve `Σₖϕₖ` — this scheme computes
-one set of WENO-Z weights per face state from all phases together, reconstructs every
-phase with those shared weights, and applies one common Zhang-Shu coefficient to the
-whole face composition. Use `WENOScheme` for unrelated fields such as temperature or
-tracers; use this type only for fractions of a whole.
+WENO5-Z scheme for fractions satisfying `0 ≤ ϕₖ ≤ 1` and `Σₖϕₖ = 1`.
+Phases share reconstruction weights and a Zhang-Shu limiter coefficient so
+the sum is preserved. Use `WENOScheme` for unrelated fields.
 
 # Arguments
-- `phases::Tuple`: at least two 1D, 2D, or 3D cell-centred arrays with identical axes,
-  element type, and concrete array type. Only used for type, size, and backend; values
-  are not read.
-- `boundary`: ordered tuple of `ExtrapolateBC()`, `PeriodicBC()`, or
-  `PrescribedInflowBC(value)` conditions, or an `AdvectionBC`. Defaults to
-  `ExtrapolateBC()` on every face. One boundary family applies to the whole phase vector
-  on a given face.
-- `stag::Bool`: whether velocities live on cell faces (`true`) or cell centers (`false`).
-  Defaults to `false`.
-- `multithreading::Bool`: whether to use multithreading (2D and 3D only). Defaults to `true`.
+- `phases`: At least two arrays with identical axes, element type, and concrete
+  array type. Values are not read during construction.
+- `boundary`: Face conditions shared by all phases; defaults to extrapolation.
+- `stag`: Use face-centered velocities when `true`.
+- `multithreading`: Enable threading in 2D or 3D.
 
-# Differences from `WENOScheme`
-- No `lim_ZS` field. The simplex limiter is unconditional: the bound and sum invariants
-  are the purpose of this type rather than an option.
-- No `upwind_mode` field. The debugging upwind path is not supported.
-- The step function takes no `u_min`/`u_max`. The bounds are fixed at `[0,1]` by the
-  simplex definition.
-
-# Fields
-- `γ`, `χ`, `ζ`, `ϵ`: WENO5-Z constants, identical to `WENOScheme`.
-- `stag::Bool`: staggered or collocated velocity layout.
-- `boundary`: normalized tuple of typed advection boundary conditions.
-- `multithreading::Bool`: whether to use multithreading.
-- `fl::NamedTuple`, `fr::NamedTuple`: per-direction left/right face states, each an
-  `NTuple{NP}` of arrays.
-- `du::NTuple{NP}`: per-phase semi-discretisation of the advection term.
-- `ut::NTuple{NP}`: per-phase temporary storage for the Runge-Kutta stages.
-- `vcenter`: cell-centred velocity, ENO5-interpolated from staggered faces when
-  `stag=true`; `nothing` on the collocated path.
+The simplex limiter is always enabled; upwind mode and custom bounds are not
+supported.
 """
-function MultiphaseWENOScheme(
-        phases::Tuple{Vararg{Any, NP}};
-        boundary = nothing, stag::Bool = false, multithreading::Bool = true,
-    ) where {NP}
-
+function _validate_phases(phases::Tuple{Vararg{Any, NP}}) where {NP}
     NP >= 2 || throw(
         ArgumentError(
             "MultiphaseWENOScheme requires at least two phases, got $NP. " *
@@ -126,19 +85,20 @@ function MultiphaseWENOScheme(
             )
         )
     end
+    return c0, T, N
+end
 
-    boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))
-    boundary = validate_multiphase_boundary(boundary, N, size(c0), NP, T)
+"""Allocate multiphase buffers from validated or resolved boundary faces."""
+function _build_multiphase_scheme(
+        phases::Tuple{Vararg{Any, NP}}, extent::PaddedExtent{N}, faces;
+        stag::Bool, multithreading::Bool, topology = NoTopology(),
+    ) where {NP, N}
+    c0 = first(phases)
+    T = eltype(c0)
 
-    # dimension labels
     labels = (:x, :y, :z)[1:min(N, 3)]
     sizes = size(c0)
-
-    # allocate a zeroed buffer of the same array type as the phases
     zeros_like(dims) = fill!(similar(c0, T, dims), zero(T))
-
-    # `Val(NP)` keeps the phase count a compile-time constant, so every buffer infers as a
-    # concrete `NTuple` rather than an abstract `Tuple`.
     valNP = Val(NP)
 
     fl = NamedTuple{labels}(
@@ -155,17 +115,58 @@ function MultiphaseWENOScheme(
     du = ntuple(_ -> zeros_like(sizes), valNP)
     ut = ntuple(_ -> zeros_like(sizes), valNP)
 
-    # Material transport needs no divergence source. The collocated path passes its
-    # supplied velocity straight through (see `prepare_velocity!`), so it needs no
-    # buffer at all; only the staggered path needs somewhere to put the ENO5-prepared
-    # cell-centred velocity.
     vcenter = stag ? NamedTuple{labels}(ntuple(_ -> zeros_like(sizes), Val(N))) : nothing
-    vperiodic = stag ? velocity_periodicity(boundary, labels) : nothing
+    vperiodic = stag ? _resolved_vperiodic(faces, labels, extent) : nothing
+    halo_buffers = halo_buffers_for_multiphase(topology, extent, stag, T, Val(NP))
 
-    return MultiphaseWENOScheme{T, NP, typeof(du), typeof(fl), typeof(vcenter), typeof(vperiodic), typeof(boundary)}(
-        stag = stag, boundary = boundary, multithreading = multithreading,
+    return MultiphaseWENOScheme{
+        T, NP, typeof(du), typeof(fl), typeof(vcenter), typeof(vperiodic),
+        typeof(faces), typeof(extent), typeof(topology), typeof(halo_buffers),
+    }(
+        stag = stag, boundary = faces, multithreading = multithreading,
         fl = fl, fr = fr, du = du, ut = ut, vcenter = vcenter, vperiodic = vperiodic,
+        extent = extent, topology = topology, halo_buffers = halo_buffers,
     )
+end
+
+function MultiphaseWENOScheme(
+        phases::Tuple{Vararg{Any, NP}};
+        boundary = nothing, stag::Bool = false, multithreading::Bool = true,
+    ) where {NP}
+    c0, T, N = _validate_phases(phases)
+
+    boundary === nothing && (boundary = ntuple(i -> ExtrapolateBC(), N * 2))
+    faces = validate_multiphase_boundary(boundary, N, size(c0), NP, T)
+    extent = default_extent(size(c0), default_global_periodic(faces, N))
+    return _build_multiphase_scheme(phases, extent, faces; stag, multithreading)
+end
+
+"""
+    padded_multiphase_scheme(phases, halo; boundary, stag=false,
+                              multithreading=true, global_size=nothing,
+                              global_periodic=nothing, geometry=:cell,
+                              topology=NoTopology())
+
+Build a padded multiphase scheme from resolved boundaries, including
+`ProcessBC`. The topology constructor supplies the halo and extents.
+"""
+function padded_multiphase_scheme(
+        phases::Tuple{Vararg{Any, NP}}, halo::NTuple{N, Int}; boundary,
+        stag::Bool = false, multithreading::Bool = true,
+        global_size::Union{NTuple{N, Int}, Nothing} = nothing,
+        global_periodic::Union{NTuple{N, Bool}, Nothing} = nothing,
+        geometry::Symbol = :cell,
+        topology = NoTopology(),
+    ) where {NP, N}
+    c0, T, N2 = _validate_phases(phases)
+    N2 == N || throw(ArgumentError("halo has $N entries but phases are $(N2)D"))
+
+    faces, owned = _resolve_padded_extent(size(c0), halo, boundary, :padded_multiphase_scheme)
+
+    gsize = global_size === nothing ? owned : global_size
+    gperiodic = global_periodic === nothing ? default_global_periodic(faces, N) : global_periodic
+    extent = PaddedExtent{N}(owned, halo, gsize, gperiodic, geometry)
+    return _build_multiphase_scheme(phases, extent, faces; stag, multithreading, topology)
 end
 
 """
