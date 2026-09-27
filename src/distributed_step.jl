@@ -1,12 +1,8 @@
-# Topology accessors keep scheme construction and stage hooks independent of MPI.
-
 """
     _validate_topology_layout(topo, N, sizes, geometry, stag, user_faces)
 
-Shared preflight for `build_topology_weno_scheme`/`build_topology_multiphase_scheme`:
-check dimensionality, resolve boundaries against the owned extent, and check
-the halo width and allocated array size. Returns `(resolved, halo, global_size,
-global_periodic)`.
+Validate boundaries, halo width, and field size for topology schemes.
+Return `(resolved, halo, global_size, global_periodic)`.
 """
 function _validate_topology_layout(topo, N, sizes, geometry::Symbol, stag::Bool, user_faces)
     resolved = resolve_boundary(user_faces, topo)
@@ -21,8 +17,7 @@ function _validate_topology_layout(topo, N, sizes, geometry::Symbol, stag::Bool,
         )
     )
     owned = weno_owned_size(topo; geometry)
-    # A staggered low-side send needs h+1 owned entries to avoid forwarding
-    # an unreceived seam ghost. Check every topology provider here.
+    # A staggered low-side send needs h+1 owned entries.
     min_owned = stag ? halo .+ 1 : halo
     all(owned .>= min_owned) || throw(
         ArgumentError(
@@ -50,9 +45,7 @@ end
                                 stag = false, lim_ZS = false,
                                 multithreading = true, upwind_mode = false)
 
-Build a padded scheme from topology accessors. Validate boundaries against the
-owned extent, replace nonphysical faces with `ProcessBC`, and check the array
-size before allocation.
+Build a padded scheme after validating boundaries and array size.
 """
 function build_topology_weno_scheme(
         c0::AbstractArray{T, N}, topo; geometry::Symbol = :cell, boundary,
@@ -90,8 +83,6 @@ function WENOScheme(
     )
 end
 
-# Exchange and refill the RK-stage array before each scalar operator call.
-
 """
     sync_stage!(weno, a)
 
@@ -108,14 +99,10 @@ function _sync_stage!(topo, weno::WENOScheme, a)
     return a
 end
 
-# Reduce conservative-form Lax-Friedrichs speeds across the topology.
-
 """
     scheme_lf_speeds(weno, v)
 
-Return the prepared velocity's Lax-Friedrichs speeds. Topology-backed
-conservative schemes reduce `lf_speed` over owned cells, with all components
-in one collective. Nonconservative schemes need no speed reduction.
+Return Lax-Friedrichs speeds, reduced over owned cells for conservative forms.
 """
 scheme_lf_speeds(weno::WENOScheme, v) = _scheme_lf_speeds(weno.topology, weno, v)
 
@@ -133,8 +120,6 @@ function _scheme_lf_speeds(topo, weno::WENOScheme, v)
     reduced = weno_allreduce_max(local_speeds, topo)
     return NamedTuple{names}(reduced)
 end
-
-# Multiphase transport uses the same stage hooks without LF speed reduction.
 
 """
     build_topology_multiphase_scheme(phases, topo; geometry = :cell, boundary,

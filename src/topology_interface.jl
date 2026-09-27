@@ -1,23 +1,9 @@
-# Topology providers implement these accessors without sharing a supertype.
-# SerialTopology exercises padding and halo hooks without MPI.
-
 """
     AbstractWENOTopology
 
-Optional supertype for a domain decomposition driving a padded WENO scheme.
-Subtyping it is not required: the scheme builders only call the accessor
-functions (`weno_ndims`, `weno_halo`, `weno_owned_size`, `weno_global_size`,
-`weno_global_offset`, `weno_periodic`, `weno_physical_low`,
-`weno_physical_high`, `weno_exchange_halo!`, `weno_allreduce_max`,
-`weno_allreduce_min`). Extend them under their qualified `FiniteDiffWENO5.`
-names.
-
-A topology may also override `halo_buffers_for`/`halo_buffers_for_multiphase`
-to hand a scheme built on it real, preallocated exchange buffers instead of
-the generic `EmptyHaloBuffers()` fallback (as `WENOCartesianTopology` does in
-`FiniteDiffWENO5`'s MPI extension) — this is optional, not part of the
-required interface, and only worth doing if `weno_exchange_halo!`'s own
-override for that topology actually reuses the buffers it's handed.
+Optional supertype for padded domain decompositions. Implement the `weno_*`
+accessors in `FiniteDiffWENO5`; subtyping is not required. Override
+`halo_buffers_for` when exchanges reuse preallocated buffers.
 """
 abstract type AbstractWENOTopology end
 
@@ -59,19 +45,9 @@ weno_physical_high(topo) = _no_topology_method(:weno_physical_high, topo)
 """
     weno_exchange_halo!(field, topo, buffers; geometry = :cell, stagger = nothing)
 
-Fill `field`'s ghost cells from neighbouring ranks on `topo`. `stagger = d`
-means `field` is face-staggered along axis `d` on the cell lattice (one extra
-entry on the high side of its own normal axis); `stagger = nothing` means
-cell-centred on the selected `geometry` lattice. `geometry = :vertex`
-requires `stagger = nothing`.
-
-`buffers` is a per-call reusable exchange-buffer pool — for a scheme built on
-`WENOCartesianTopology` (`FiniteDiffWENO5`'s MPI extension), this is one of
-its `scheme.halo_buffers` entries (`.center`/`.x`/`.y`/`.z`), preallocated
-once at scheme construction and reused every call instead of allocating
-fresh send/recv arrays each time. `SerialTopology`/`NoTopology` and any other
-topology without a real `halo_buffers_for` override simply ignore whatever
-`buffers` value they're given (typically `EmptyHaloBuffers()`).
+Fill ghost cells using reusable `buffers`. `stagger = d` selects a face field
+with an extra high-side entry; `geometry = :vertex` requires `stagger = nothing`.
+Topologies without exchange buffers may ignore `buffers`.
 """
 weno_exchange_halo!(field::AbstractArray, topo, buffers; geometry::Symbol = :cell, stagger::Union{Nothing, Int} = nothing) =
     _no_topology_method(:weno_exchange_halo!, topo)
@@ -106,8 +82,6 @@ require_no_topology(scheme, label::AbstractString) = scheme.topology isa NoTopol
     )
 )
 
-# Default marker for schemes without padding or communication.
-
 """
     NoTopology()
 
@@ -118,12 +92,8 @@ struct NoTopology end
 """
     EmptyHaloBuffers()
 
-Empty halo-buffer sentinel for a scheme that never reuses preallocated
-exchange buffers: an unpadded scheme (KA, Chmy, or the plain in-memory
-constructor), or a scheme built on `SerialTopology`/`NoTopology`. Every
-property access on it (`.center`, `.x`, `.y`, `.z`) returns another
-`EmptyHaloBuffers()`, so call sites never need to special-case which
-topology they're on.
+Sentinel for schemes without preallocated exchange buffers. Any property
+access returns another `EmptyHaloBuffers()`.
 """
 struct EmptyHaloBuffers end
 
@@ -132,31 +102,23 @@ Base.getproperty(::EmptyHaloBuffers, ::Symbol) = EmptyHaloBuffers()
 """
     halo_buffers_for(topo, extent::PaddedExtent, stag::Bool, ::Type{T}) where T
 
-Build the halo-exchange buffer pool a `WENOScheme` should hold for `topo`.
-The generic fallback (used by `NoTopology`, `SerialTopology`, and any other
-topology that hasn't opted in) returns `EmptyHaloBuffers()`;
-`WENOCartesianTopology` (MPI extension) overrides this with real
-preallocated buffers.
+Build a scheme's halo buffers. The default returns `EmptyHaloBuffers()`;
+MPI topologies override it with preallocated buffers.
 """
 halo_buffers_for(topo, extent::PaddedExtent, stag::Bool, ::Type{T}) where {T} = EmptyHaloBuffers()
 
 """
     halo_buffers_for_multiphase(topo, extent::PaddedExtent, stag::Bool, ::Type{T}, ::Val{NP}) where {T,NP}
 
-Multiphase counterpart of [`halo_buffers_for`](@ref): builds the fused
-`NP`-tuple buffer pool a `MultiphaseWENOScheme` should hold for `topo`.
+Build halo buffers for a multiphase scheme.
 """
 halo_buffers_for_multiphase(topo, extent::PaddedExtent, stag::Bool, ::Type{T}, ::Val{NP}) where {T, NP} = EmptyHaloBuffers()
-
-# Single-rank topology with explicit padding.
 
 """
     SerialTopology(global_dims::NTuple{N,Int}; halo = 3, periodic = false)
 
-Single-rank topology: owned size equals global size, zero offset, both faces
-of every axis physical, `weno_exchange_halo!` a no-op, and the reductions the
-identity. `halo`/`periodic` may each be given as a scalar (applied to every
-axis) or an `NTuple{N}`.
+Single-rank padded topology. `halo` and `periodic` accept scalars or tuples;
+halo exchange is a no-op.
 """
 struct SerialTopology{N} <: AbstractWENOTopology
     global_dims::NTuple{N, Int}
@@ -188,20 +150,16 @@ function weno_exchange_halo!(field::AbstractArray, topo::SerialTopology, buffers
     geometry === :vertex && stagger !== nothing && throw(
         ArgumentError("geometry = :vertex requires stagger = nothing")
     )
-    return field # single rank: no neighbour to exchange with
+    return field
 end
 
 weno_allreduce_max(value, ::SerialTopology) = value
 weno_allreduce_min(value, ::SerialTopology) = value
 
-# Resolve user boundaries for each rank.
-
 """
     resolve_boundary(boundary, topo)
 
-Replace nonphysical faces with `ProcessBC()` and keep physical faces unchanged.
-Any topology implementing the accessors can use this method. Reject periodicity
-that disagrees with the topology to avoid wrapping rank-local values.
+Replace nonphysical faces with `ProcessBC()` and require matching periodicity.
 """
 function resolve_boundary(boundary, topo)
     N = weno_ndims(topo)
@@ -235,16 +193,11 @@ function resolve_boundary(boundary, topo)
     end
 end
 
-# Helpers shared by topology providers.
-
 """
     allocate_weno_field(topo; T = Float64, geometry = :cell, stagger = nothing)
 
-A zeroed, padded `Array{T,N}` sized exactly as a `WENOScheme`/
-`MultiphaseWENOScheme` field buffer on `topo` would be:
-`weno_owned_size(topo; geometry) .+ 2 .* weno_halo(topo)`, plus one entry
-along `stagger` (cell geometry only). `geometry = :vertex` requires
-`stagger = nothing`.
+Allocate a zeroed padded field, with one extra entry along `stagger`.
+Vertex geometry requires `stagger = nothing`.
 """
 function allocate_weno_field(topo; T::Type = Float64, geometry::Symbol = :cell, stagger::Union{Nothing, Int} = nothing)
     geometry === :vertex && stagger !== nothing && throw(
@@ -291,7 +244,7 @@ function weno_global_ranges(topo; geometry::Symbol = :cell)
     return ntuple(d -> (offset[d] + 1):(offset[d] + owned[d]), N)
 end
 
-# CFL inputs must agree across ranks so each rank takes the same number of steps.
+# CFL inputs must agree across ranks.
 
 """
     weno_cfl_dt(topo, velocity::Union{Tuple, NamedTuple}, spacing, cfl; geometry = :cell, staggered = true)
@@ -332,11 +285,10 @@ Compute the substep count from a shared duration and collective CFL timestep.
 With `debug = true`, check agreement across ranks before advancing.
 """
 function weno_substeps(topo, duration, dt_cfl; debug::Bool = false)
-    # No early return: under `debug`, every rank must reach the reductions below.
+    # Every rank must reach the debug collective, even for zero duration.
     n = (iszero(duration) || isinf(dt_cfl)) ? 0 : max(1, ceil(Int, duration / dt_cfl))
     if debug && !(topo isa NoTopology)
-        # One elementwise-max collective over `(n, -n)` recovers both the max and
-        # (negated) min in a single round trip instead of two separate reductions.
+        # Recover min and max with one elementwise reduction.
         n_max, neg_n_min = weno_allreduce_max((n, -n), topo)
         n_min = -neg_n_min
         n_min == n_max || throw(

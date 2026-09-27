@@ -19,12 +19,9 @@ struct PrescribedInflowBC{T} <: AbstractAdvectionBoundary
 end
 
 """
-An interior process-seam face under a padded/distributed decomposition.
-Retain the global axis's indexing policy so reconstruction compiles with the
-same arithmetic as serial (periodic indexing can inhibit loop vectorization).
-With a sufficient halo, neither wrapping nor clamping is reached by an owned
-stencil; both keep scratch ghost computations in bounds. The tag still skips
-physical ghost filling and inflow installation. User constructors reject it.
+Interior process seam. Keep the global indexing policy for reconstruction;
+the halo prevents owned stencils from wrapping or clamping. Physical ghost
+filling and inflow installation skip this boundary. Users cannot select it.
 """
 struct ProcessBC{B <: Union{PeriodicBC, ExtrapolateBC}} <: AbstractAdvectionBoundary
     indexing::B
@@ -99,10 +96,8 @@ end
 """
     normalize_boundary_faces(boundary, N)
 
-Check the face count and entry kinds, then map legacy integer codes onto typed boundary
-conditions. This is the half of `validate_boundary` that does not inspect the *value*
-carried by a `PrescribedInflowBC`, so it can be shared by the scalar route and by the
-multiphase route, whose inflow values are tuples that the scalar validator rejects.
+Check faces and map legacy codes to typed boundaries without validating inflow
+values; scalar and multiphase validation share this step.
 """
 function normalize_boundary_faces(boundary, N)
     faces = boundary_faces(boundary)
@@ -139,19 +134,14 @@ inflow_value(boundary::PrescribedInflowBC{<:Real}, indices...) = boundary.value
 inflow_value(boundary::PrescribedInflowBC{<:AbstractArray}, indices...) =
     boundary.value[indices...]
 
-# Typed boundaries use either periodic indexing or the existing constant
-# extrapolation. Prescribed inflow values are installed directly into the
-# exterior upwind state at the physical face after reconstruction.
+# Inflow values are installed after reconstruction.
 left_index(i, d, nx, ::PeriodicBC) = mod1(i - d, nx)
 right_index(i, d, nx, ::PeriodicBC) = mod1(i + d, nx)
 left_index(i, d, nx, ::ExtrapolateBC) = max(i - d, 1)
 right_index(i, d, nx, ::ExtrapolateBC) = min(i + d, nx)
 left_index(i, d, nx, ::PrescribedInflowBC) = max(i - d, 1)
 right_index(i, d, nx, ::PrescribedInflowBC) = min(i + d, nx)
-# `ProcessBC` delegates to the global indexing policy — see the type's
-# docstring. With a halo at least as wide as the reconstruction stencil the
-# wrap/clamp never fires on an owned face; it keeps ghost-face reads
-# memory-safe under `@inbounds`.
+# Keep scratch ghost-face reads in bounds under `@inbounds`.
 left_index(i, d, nx, b::ProcessBC) = left_index(i, d, nx, b.indexing)
 right_index(i, d, nx, b::ProcessBC) = right_index(i, d, nx, b.indexing)
 

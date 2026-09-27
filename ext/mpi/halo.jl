@@ -1,46 +1,25 @@
-# Exchange axes in order so later exchanges carry updated corner ghosts.
+# Axis order lets later exchanges carry updated corner ghosts.
 
-const _TAG_HIGH_GHOST = Cint(100) # data destined to fill the receiver's HIGH ghost
-const _TAG_LOW_GHOST = Cint(101)  # data destined to fill the receiver's LOW ghost
+const _TAG_HIGH_GHOST = Cint(100)
+const _TAG_LOW_GHOST = Cint(101)
 
 """
     WENOHaloBuffers{N, B}
 
-Preallocated send/receive buffers and a fixed, per-axis `MPI.RequestSet` of
-persistent (`Send_init`/`Recv_init`) requests for one field's halo exchange
-across all `N` axes on a `WENOCartesianTopology`.
-Built once, at scheme construction, from the field's static shape
-(`owned`/`halo`/`stagger`/geometry) — never resized afterward. An axis/side
-entry is `nothing` when that side never communicates (a global physical
-boundary, or a single-rank axis): `send_lo[e]`/`recv_lo[e]` are `nothing`
-together whenever `weno_physical_low(topo)[e]` is true, independently of
-`send_hi[e]`/`recv_hi[e]`, which follow `weno_physical_high(topo)[e]`.
+Preallocated halo buffers and persistent MPI requests for one field.
+Physical boundaries have `nothing` buffers on the corresponding side.
 """
 struct WENOHaloBuffers{N, B}
     send_lo::NTuple{N, Union{Nothing, B}}
     recv_lo::NTuple{N, Union{Nothing, B}}
     send_hi::NTuple{N, Union{Nothing, B}}
     recv_hi::NTuple{N, Union{Nothing, B}}
-    # One fixed MPI.RequestSet per axis, wrapping that axis's persistent
-    # Send_init/Recv_init requests (0, 2, or 4 of them, matching phys_lo/
-    # phys_hi — never resized after construction). Reusing the same
-    # RequestSet every call, instead of rebuilding one from a Vector{Request}
-    # each time, is what MPI.jl's own RequestSet docstring means by
-    # "can be used to minimize allocations".
+    # Reuse each axis's persistent requests across exchanges.
     reqs::NTuple{N, MPI.RequestSet}
 end
 
-# `reqs`'s persistent requests are bound (via Send_init/Recv_init) to the
-# specific send/recv arrays above by memory address, not by value — a
-# generic recursive `deepcopy` would copy the raw request handles while
-# leaving them pointed at the *original* buffers, so both copies would
-# silently exchange into and out of the wrong arrays, and freeing either
-# copy's requests would leave the other's dangling. There is no way to
-# produce a correct copy without rebuilding fresh persistent requests bound
-# to fresh buffers, which needs the owning scheme's topology/extent/stag —
-# information this type doesn't have — so `deepcopy` is disabled here
-# rather than left to silently misbehave. Build a new scheme from the same
-# topology instead (`WENOScheme(...)`/`MultiphaseWENOScheme(...)`).
+# Persistent requests retain buffer addresses; copying them would still target
+# the original arrays. Build a new scheme to get independent buffers.
 Base.deepcopy_internal(::WENOHaloBuffers, ::IdDict) = throw(
     ArgumentError(
         "WENOHaloBuffers cannot be deepcopy'd: its persistent MPI requests are bound " *
@@ -53,13 +32,8 @@ Base.deepcopy_internal(::WENOHaloBuffers, ::IdDict) = throw(
 """
     _build_halo_buffers(::Type{T}, topo, owned, halo, phys_lo, phys_hi, stagger, trailing)
 
-Build one field's per-axis `WENOHaloBuffers`. `stagger` is the axis (if any)
-this field itself is face-staggered along — it both adds one entry to that
-axis in the field's own shape and makes that one axis's high-side width
-`halo[e] + 1` instead of `halo[e]` (the shared interface face, which only
-the low-side neighbour can send). `trailing` is `nothing` for a single-array
-exchange, or `NP` for a fused `NP`-tuple exchange (adds a trailing phase
-dimension to every buffer).
+Build per-axis buffers. A staggered axis uses one extra high-side entry;
+`trailing` adds a phase dimension for fused exchanges.
 """
 function _build_halo_buffers(
         ::Type{T}, topo::WENOCartesianTopology{N}, owned::NTuple{N, Int}, halo::NTuple{N, Int},
@@ -78,9 +52,7 @@ function _build_halo_buffers(
     send_hi = ntuple(e -> phys_hi[e] ? nothing : make(halo[e], e), N)
     recv_hi = ntuple(e -> phys_hi[e] ? nothing : make(high_width(e), e), N)
 
-    # Persistent requests bind (buffer, peer rank, tag, comm) once; every
-    # later call just Start!s/Wait!s the same fixed handles instead of
-    # issuing fresh non-blocking requests.
+    # Bind requests once to these buffers.
     reqs = ntuple(N) do e
         active = MPI.Request[]
         phys_lo[e] || push!(
@@ -103,8 +75,7 @@ end
 """
     FiniteDiffWENO5.halo_buffers_for(topo::WENOCartesianTopology, extent, stag, T)
 
-Real `WENOCartesianTopology` override: build the full `(center = ..., [x =
-..., y = ..., z = ...])` buffer pool a `WENOScheme` should hold.
+Build center and optional face-staggered buffer pools.
 """
 function FiniteDiffWENO5.halo_buffers_for(
         topo::WENOCartesianTopology{N}, extent::FiniteDiffWENO5.PaddedExtent{N}, stag::Bool, ::Type{T},
@@ -123,9 +94,7 @@ end
 """
     FiniteDiffWENO5.halo_buffers_for_multiphase(topo::WENOCartesianTopology, extent, stag, T, ::Val{NP})
 
-Multiphase counterpart of [`halo_buffers_for`](@ref): the `center` entry
-holds the fused `NP`-tuple buffer pool used by `MultiphaseWENOScheme`'s
-phase-state exchange.
+Build buffer pools with a fused `NP`-phase center entry.
 """
 function FiniteDiffWENO5.halo_buffers_for_multiphase(
         topo::WENOCartesianTopology{N}, extent::FiniteDiffWENO5.PaddedExtent{N}, stag::Bool, ::Type{T}, ::Val{NP},
@@ -148,9 +117,7 @@ end
 """
     _axis_exchange!(buffers, field, topo, d, low_width, high_width, owned_lo, owned_hi)
 
-Exchange axis `d` with low and high neighbours. Send `high_width` owned
-entries low and `low_width` entries high; receive the matching ghost widths.
-Physical boundaries are filled separately.
+Exchange axis `d`; send `high_width` entries low and `low_width` entries high.
 """
 function _axis_exchange!(
         buffers::WENOHaloBuffers{N}, field::AbstractArray{T, N}, topo::WENOCartesianTopology, d::Int,
@@ -158,7 +125,7 @@ function _axis_exchange!(
     ) where {T, N}
     phys_lo = weno_physical_low(topo)[d]
     phys_hi = weno_physical_high(topo)[d]
-    (phys_lo && phys_hi) && return field # single rank on this axis: nothing to do
+    (phys_lo && phys_hi) && return field
 
     sizes = size(field)
 
@@ -180,8 +147,7 @@ end
 """
     _pack_into!(buf, fields::NTuple{NP}, ::Val{N}, d, lo, hi)
 
-Copy matching field slices into a preallocated buffer's phase dimension,
-for one MPI message.
+Pack field slices along the phase dimension.
 """
 function _pack_into!(buf, fields::NTuple{NP}, V::Val{N}, d, lo, hi) where {NP, N}
     sizes = size(fields[1])
@@ -195,7 +161,7 @@ end
 """
     _unpack_from!(fields::NTuple{NP}, buf, ::Val{N}, d, lo, hi)
 
-Scatter a packed buffer's phase dimension into field slices.
+Unpack the phase dimension into field slices.
 """
 function _unpack_from!(fields::NTuple{NP}, buf, V::Val{N}, d, lo, hi) where {NP, N}
     sizes = size(fields[1])
@@ -209,7 +175,7 @@ end
 """
     _axis_exchange_fused!(buffers, fields::NTuple{NP}, topo, d, low_width, high_width, owned_lo, owned_hi)
 
-Exchange all phases together with one message per neighbour and axis.
+Exchange all phases in one message per neighbour and axis.
 """
 function _axis_exchange_fused!(
         buffers::WENOHaloBuffers{N}, fields::NTuple{NP, AbstractArray{T, N}}, topo::WENOCartesianTopology, d::Int,
@@ -217,7 +183,7 @@ function _axis_exchange_fused!(
     ) where {NP, T, N}
     phys_lo = weno_physical_low(topo)[d]
     phys_hi = weno_physical_high(topo)[d]
-    (phys_lo && phys_hi) && return fields # single rank on this axis: nothing to do
+    (phys_lo && phys_hi) && return fields
 
     V = Val(N)
 
@@ -239,12 +205,8 @@ end
 """
     weno_exchange_halo!(fields::NTuple{NP}, topo::WENOCartesianTopology, buffers::WENOHaloBuffers; geometry = :cell, stagger = nothing)
 
-Exchange equal-shaped phase arrays together, one message per side and axis,
-reusing `buffers`'s preallocated send/recv arrays and persistent per-axis
-request set instead of allocating fresh ones. Throws `ArgumentError` if
-`eltype(fields)` doesn't match `buffers`'s own element type — mixed-precision
-exchange is not supported, since `buffers` was preallocated for one fixed
-element type at scheme construction.
+Exchange equal-shaped phase arrays using preallocated buffers and persistent
+requests. Field and buffer element types must match.
 """
 function weno_exchange_halo!(
         fields::NTuple{NP, AbstractArray{T, N}}, topo::WENOCartesianTopology{N}, buffers::WENOHaloBuffers{N, B};
@@ -277,14 +239,9 @@ end
 """
     weno_exchange_halo!(field, topo::WENOCartesianTopology, buffers::WENOHaloBuffers; geometry = :cell, stagger = nothing)
 
-Exchange cell, face-staggered, or vertex ghosts. The staggered axis receives
-`h` low ghosts and `h+1` high ghosts: its extra high face belongs to the next
-rank unless it is a physical boundary. Reuses `buffers`'s preallocated
-send/recv arrays and persistent per-axis request set instead of allocating
-fresh ones. Throws `ArgumentError` if `eltype(field)` doesn't match
-`buffers`'s own element type — mixed-precision exchange is not supported,
-since `buffers` was preallocated for one fixed element type at scheme
-construction.
+Exchange cell, face-staggered, or vertex ghosts using preallocated buffers.
+The staggered axis receives `h` low ghosts and `h+1` high ghosts. Field and
+buffer element types must match.
 """
 function weno_exchange_halo!(
         field::AbstractArray{T, N}, topo::WENOCartesianTopology{N}, buffers::WENOHaloBuffers{N, B};

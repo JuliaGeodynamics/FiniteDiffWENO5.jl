@@ -1,82 +1,38 @@
 @kwdef struct MultiphaseWENOScheme{T, NP, TArray, TFlux, TVelocity, TPeriodicity, TBoundary, TExtent, TTopology, THaloBuffers} <: AbstractWENO
-    # upwind and downwind constants
     γ::NTuple{3, T} = T.((0.1, 0.6, 0.3))
-    # betas' constants
     χ::NTuple{2, T} = T.((13 / 12, 1 / 4))
-    # stencil weights
     ζ::NTuple{5, T} = T.((1 / 3, 7 / 6, 11 / 6, 1 / 6, 5 / 6))
-    # tolerance to machine precision of the type T
     ϵ::T = eps(T)
-    # staggered grid or not (velocities on cell faces or cell centers)
     stag::Bool
-    # boundary conditions
     boundary::TBoundary
-    # multithreading
     multithreading::Bool
-    # per-phase fluxes as NamedTuples of NTuple{NP} arrays
     fl::TFlux
     fr::TFlux
-    # per-phase semi-discretisation of the advection term
     du::TArray
-    # per-phase temporary array for the time stepping
     ut::TArray
-    # cell-centred velocity, populated from staggered faces by ENO5 when required
     vcenter::TVelocity
-    # periodicity of the normal staggered velocity in each direction
     vperiodic::TPeriodicity
-    # allocated and owned extents
     extent::TExtent
-    # distributed topology, or `NoTopology()` for an unpadded scheme
     topology::TTopology = NoTopology()
-    # preallocated halo-exchange buffers, or `EmptyHaloBuffers()` for an
-    # unpadded scheme or one whose topology doesn't provide real buffers
     halo_buffers::THaloBuffers = EmptyHaloBuffers()
 end
 
 """
     MultiphaseWENOScheme(phases::Tuple; boundary=nothing, stag=false, multithreading=true)
 
-Structure containing the WENO5-Z constants and per-phase buffers for the *simultaneous*
-advection of two or more material fractions constrained to the probability simplex,
-`0 ≤ ϕₖ ≤ 1` and `Σₖϕₖ = 1`.
-
-Unlike `WENOScheme` with a tuple of fields — which advects each field sequentially with
-its own nonlinear weights and therefore does not preserve `Σₖϕₖ` — this scheme computes
-one set of WENO-Z weights per face state from all phases together, reconstructs every
-phase with those shared weights, and applies one common Zhang-Shu coefficient to the
-whole face composition. Use `WENOScheme` for unrelated fields such as temperature or
-tracers; use this type only for fractions of a whole.
+WENO5-Z scheme for fractions satisfying `0 ≤ ϕₖ ≤ 1` and `Σₖϕₖ = 1`.
+Phases share reconstruction weights and a Zhang-Shu limiter coefficient so
+the sum is preserved. Use `WENOScheme` for unrelated fields.
 
 # Arguments
-- `phases::Tuple`: at least two 1D, 2D, or 3D cell-centred arrays with identical axes,
-  element type, and concrete array type. Only used for type, size, and backend; values
-  are not read.
-- `boundary`: ordered tuple of `ExtrapolateBC()`, `PeriodicBC()`, or
-  `PrescribedInflowBC(value)` conditions, or an `AdvectionBC`. Defaults to
-  `ExtrapolateBC()` on every face. One boundary family applies to the whole phase vector
-  on a given face.
-- `stag::Bool`: whether velocities live on cell faces (`true`) or cell centers (`false`).
-  Defaults to `false`.
-- `multithreading::Bool`: whether to use multithreading (2D and 3D only). Defaults to `true`.
+- `phases`: At least two arrays with identical axes, element type, and concrete
+  array type. Values are not read during construction.
+- `boundary`: Face conditions shared by all phases; defaults to extrapolation.
+- `stag`: Use face-centered velocities when `true`.
+- `multithreading`: Enable threading in 2D or 3D.
 
-# Differences from `WENOScheme`
-- No `lim_ZS` field. The simplex limiter is unconditional: the bound and sum invariants
-  are the purpose of this type rather than an option.
-- No `upwind_mode` field. The debugging upwind path is not supported.
-- The step function takes no `u_min`/`u_max`. The bounds are fixed at `[0,1]` by the
-  simplex definition.
-
-# Fields
-- `γ`, `χ`, `ζ`, `ϵ`: WENO5-Z constants, identical to `WENOScheme`.
-- `stag::Bool`: staggered or collocated velocity layout.
-- `boundary`: normalized tuple of typed advection boundary conditions.
-- `multithreading::Bool`: whether to use multithreading.
-- `fl::NamedTuple`, `fr::NamedTuple`: per-direction left/right face states, each an
-  `NTuple{NP}` of arrays.
-- `du::NTuple{NP}`: per-phase semi-discretisation of the advection term.
-- `ut::NTuple{NP}`: per-phase temporary storage for the Runge-Kutta stages.
-- `vcenter`: cell-centred velocity, ENO5-interpolated from staggered faces when
-  `stag=true`; `nothing` on the collocated path.
+The simplex limiter is always enabled; upwind mode and custom bounds are not
+supported.
 """
 function _validate_phases(phases::Tuple{Vararg{Any, NP}}) where {NP}
     NP >= 2 || throw(
