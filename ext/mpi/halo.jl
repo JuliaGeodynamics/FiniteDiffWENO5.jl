@@ -1,7 +1,7 @@
 # Axis order lets later exchanges carry updated corner ghosts.
 
-const _TAG_HIGH_GHOST = Cint(100)
-const _TAG_LOW_GHOST = Cint(101)
+const TAG_HIGH_GHOST = Cint(100)
+const TAG_LOW_GHOST = Cint(101)
 
 """
     WENOHaloBuffers{N, B}
@@ -18,6 +18,22 @@ struct WENOHaloBuffers{N, B}
     reqs::NTuple{N, MPI.RequestSet}
 end
 
+# `RequestSet` caches raw handles in `vals`; clear them too so a freed handle
+# is never restarted. Unreleased requests are still freed by their finalizers.
+function FiniteDiffWENO5.release_halo_buffers!(buffers::WENOHaloBuffers)
+    for set in buffers.reqs, i in eachindex(set.requests)
+        MPI.free(set.requests[i])
+        set.vals[i] = set.requests[i].val
+    end
+    return nothing
+end
+
+function check_open(reqs::MPI.RequestSet)
+    any(MPI.isnull, reqs.requests) &&
+        throw(ArgumentError("halo exchange on a closed WENO scheme"))
+    return nothing
+end
+
 # Persistent requests retain buffer addresses; copying them would still target
 # the original arrays. Build a new scheme to get independent buffers.
 Base.deepcopy_internal(::WENOHaloBuffers, ::IdDict) = throw(
@@ -30,12 +46,12 @@ Base.deepcopy_internal(::WENOHaloBuffers, ::IdDict) = throw(
 )
 
 """
-    _build_halo_buffers(::Type{T}, topo, owned, halo, phys_lo, phys_hi, stagger, trailing)
+    build_halo_buffers(::Type{T}, topo, owned, halo, phys_lo, phys_hi, stagger, trailing)
 
 Build per-axis buffers. A staggered axis uses one extra high-side entry;
 `trailing` adds a phase dimension for fused exchanges.
 """
-function _build_halo_buffers(
+function build_halo_buffers(
         ::Type{T}, topo::WENOCartesianTopology{N}, owned::NTuple{N, Int}, halo::NTuple{N, Int},
         phys_lo::NTuple{N, Bool}, phys_hi::NTuple{N, Bool},
         stagger::Union{Nothing, Int}, trailing::Union{Nothing, Int},
@@ -57,13 +73,13 @@ function _build_halo_buffers(
         active = MPI.Request[]
         phys_lo[e] || push!(
             active,
-            MPI.Send_init(send_lo[e], topo.comm; dest = topo.neighbors[e][1], tag = _TAG_HIGH_GHOST),
-            MPI.Recv_init(recv_lo[e], topo.comm; source = topo.neighbors[e][1], tag = _TAG_LOW_GHOST),
+            MPI.Send_init(send_lo[e], topo.comm; dest = topo.neighbors[e][1], tag = TAG_HIGH_GHOST),
+            MPI.Recv_init(recv_lo[e], topo.comm; source = topo.neighbors[e][1], tag = TAG_LOW_GHOST),
         )
         phys_hi[e] || push!(
             active,
-            MPI.Send_init(send_hi[e], topo.comm; dest = topo.neighbors[e][2], tag = _TAG_LOW_GHOST),
-            MPI.Recv_init(recv_hi[e], topo.comm; source = topo.neighbors[e][2], tag = _TAG_HIGH_GHOST),
+            MPI.Send_init(send_hi[e], topo.comm; dest = topo.neighbors[e][2], tag = TAG_LOW_GHOST),
+            MPI.Recv_init(recv_hi[e], topo.comm; source = topo.neighbors[e][2], tag = TAG_HIGH_GHOST),
         )
         MPI.RequestSet(active)
     end
@@ -84,10 +100,10 @@ function FiniteDiffWENO5.halo_buffers_for(
     halo = weno_halo(topo)
     phys_lo = weno_physical_low(topo)
     phys_hi = weno_physical_high(topo)
-    center = _build_halo_buffers(T, topo, owned, halo, phys_lo, phys_hi, nothing, nothing)
+    center = build_halo_buffers(T, topo, owned, halo, phys_lo, phys_hi, nothing, nothing)
     stag || return (; center)
     labels = (:x, :y, :z)[1:min(N, 3)]
-    axes_bufs = ntuple(d -> _build_halo_buffers(T, topo, owned, halo, phys_lo, phys_hi, d, nothing), min(N, 3))
+    axes_bufs = ntuple(d -> build_halo_buffers(T, topo, owned, halo, phys_lo, phys_hi, d, nothing), min(N, 3))
     return NamedTuple{(:center, labels...)}((center, axes_bufs...))
 end
 
@@ -103,55 +119,56 @@ function FiniteDiffWENO5.halo_buffers_for_multiphase(
     halo = weno_halo(topo)
     phys_lo = weno_physical_low(topo)
     phys_hi = weno_physical_high(topo)
-    center = _build_halo_buffers(T, topo, owned, halo, phys_lo, phys_hi, nothing, NP)
+    center = build_halo_buffers(T, topo, owned, halo, phys_lo, phys_hi, nothing, NP)
     stag || return (; center)
     labels = (:x, :y, :z)[1:min(N, 3)]
-    axes_bufs = ntuple(d -> _build_halo_buffers(T, topo, owned, halo, phys_lo, phys_hi, d, nothing), min(N, 3))
+    axes_bufs = ntuple(d -> build_halo_buffers(T, topo, owned, halo, phys_lo, phys_hi, d, nothing), min(N, 3))
     return NamedTuple{(:center, labels...)}((center, axes_bufs...))
 end
 
-@inline function _axis_slice(sizes::NTuple{N, Int}, d::Int, lo::Int, hi::Int) where {N}
+@inline function axis_slice(sizes::NTuple{N, Int}, d::Int, lo::Int, hi::Int) where {N}
     return ntuple(k -> k == d ? (lo:hi) : (1:sizes[k]), N)
 end
 
 """
-    _axis_exchange!(buffers, field, topo, d, low_width, high_width, owned_lo, owned_hi)
+    axis_exchange!(buffers, field, topo, d, low_width, high_width, owned_lo, owned_hi)
 
 Exchange axis `d`; send `high_width` entries low and `low_width` entries high.
 """
-function _axis_exchange!(
+function axis_exchange!(
         buffers::WENOHaloBuffers{N}, field::AbstractArray{T, N}, topo::WENOCartesianTopology, d::Int,
         low_width::Int, high_width::Int, owned_lo::Int, owned_hi::Int,
     ) where {T, N}
     phys_lo = weno_physical_low(topo)[d]
     phys_hi = weno_physical_high(topo)[d]
     (phys_lo && phys_hi) && return field
+    check_open(buffers.reqs[d])
 
     sizes = size(field)
 
-    phys_lo || copyto!(buffers.send_lo[d], view(field, _axis_slice(sizes, d, owned_lo, owned_lo + high_width - 1)...))
-    phys_hi || copyto!(buffers.send_hi[d], view(field, _axis_slice(sizes, d, owned_hi - low_width + 1, owned_hi)...))
+    phys_lo || copyto!(buffers.send_lo[d], view(field, axis_slice(sizes, d, owned_lo, owned_lo + high_width - 1)...))
+    phys_hi || copyto!(buffers.send_hi[d], view(field, axis_slice(sizes, d, owned_hi - low_width + 1, owned_hi)...))
 
     reqs = buffers.reqs[d]
     MPI.Startall(reqs)
     MPI.Waitall(reqs)
 
     phys_lo ||
-        (view(field, _axis_slice(sizes, d, owned_lo - low_width, owned_lo - 1)...) .= buffers.recv_lo[d])
+        (view(field, axis_slice(sizes, d, owned_lo - low_width, owned_lo - 1)...) .= buffers.recv_lo[d])
     phys_hi ||
-        (view(field, _axis_slice(sizes, d, owned_hi + 1, owned_hi + high_width)...) .= buffers.recv_hi[d])
+        (view(field, axis_slice(sizes, d, owned_hi + 1, owned_hi + high_width)...) .= buffers.recv_hi[d])
 
     return field
 end
 
 """
-    _pack_into!(buf, fields::NTuple{NP}, ::Val{N}, d, lo, hi)
+    pack_into!(buf, fields::NTuple{NP}, ::Val{N}, d, lo, hi)
 
 Pack field slices along the phase dimension.
 """
-function _pack_into!(buf, fields::NTuple{NP}, V::Val{N}, d, lo, hi) where {NP, N}
+function pack_into!(buf, fields::NTuple{NP}, V::Val{N}, d, lo, hi) where {NP, N}
     sizes = size(fields[1])
-    slice = _axis_slice(sizes, d, lo, hi)
+    slice = axis_slice(sizes, d, lo, hi)
     for (q, f) in enumerate(fields)
         copyto!(selectdim(buf, N + 1, q), view(f, slice...))
     end
@@ -159,13 +176,13 @@ function _pack_into!(buf, fields::NTuple{NP}, V::Val{N}, d, lo, hi) where {NP, N
 end
 
 """
-    _unpack_from!(fields::NTuple{NP}, buf, ::Val{N}, d, lo, hi)
+    unpack_from!(fields::NTuple{NP}, buf, ::Val{N}, d, lo, hi)
 
 Unpack the phase dimension into field slices.
 """
-function _unpack_from!(fields::NTuple{NP}, buf, V::Val{N}, d, lo, hi) where {NP, N}
+function unpack_from!(fields::NTuple{NP}, buf, V::Val{N}, d, lo, hi) where {NP, N}
     sizes = size(fields[1])
-    slice = _axis_slice(sizes, d, lo, hi)
+    slice = axis_slice(sizes, d, lo, hi)
     for (q, f) in enumerate(fields)
         view(f, slice...) .= selectdim(buf, N + 1, q)
     end
@@ -173,31 +190,32 @@ function _unpack_from!(fields::NTuple{NP}, buf, V::Val{N}, d, lo, hi) where {NP,
 end
 
 """
-    _axis_exchange_fused!(buffers, fields::NTuple{NP}, topo, d, low_width, high_width, owned_lo, owned_hi)
+    axis_exchange_fused!(buffers, fields::NTuple{NP}, topo, d, low_width, high_width, owned_lo, owned_hi)
 
 Exchange all phases in one message per neighbour and axis.
 """
-function _axis_exchange_fused!(
+function axis_exchange_fused!(
         buffers::WENOHaloBuffers{N}, fields::NTuple{NP, AbstractArray{T, N}}, topo::WENOCartesianTopology, d::Int,
         low_width::Int, high_width::Int, owned_lo::Int, owned_hi::Int,
     ) where {NP, T, N}
     phys_lo = weno_physical_low(topo)[d]
     phys_hi = weno_physical_high(topo)[d]
     (phys_lo && phys_hi) && return fields
+    check_open(buffers.reqs[d])
 
     V = Val(N)
 
-    phys_lo || _pack_into!(buffers.send_lo[d], fields, V, d, owned_lo, owned_lo + high_width - 1)
-    phys_hi || _pack_into!(buffers.send_hi[d], fields, V, d, owned_hi - low_width + 1, owned_hi)
+    phys_lo || pack_into!(buffers.send_lo[d], fields, V, d, owned_lo, owned_lo + high_width - 1)
+    phys_hi || pack_into!(buffers.send_hi[d], fields, V, d, owned_hi - low_width + 1, owned_hi)
 
     reqs = buffers.reqs[d]
     MPI.Startall(reqs)
     MPI.Waitall(reqs)
 
     phys_lo ||
-        _unpack_from!(fields, buffers.recv_lo[d], V, d, owned_lo - low_width, owned_lo - 1)
+        unpack_from!(fields, buffers.recv_lo[d], V, d, owned_lo - low_width, owned_lo - 1)
     phys_hi ||
-        _unpack_from!(fields, buffers.recv_hi[d], V, d, owned_hi + 1, owned_hi + high_width)
+        unpack_from!(fields, buffers.recv_hi[d], V, d, owned_hi + 1, owned_hi + high_width)
 
     return fields
 end
@@ -228,9 +246,9 @@ function weno_exchange_halo!(
         owned_lo = h + 1
         owned_hi = h + owned[d]
         if d == stagger
-            _axis_exchange_fused!(buffers, fields, topo, d, h, h + 1, owned_lo, owned_hi)
+            axis_exchange_fused!(buffers, fields, topo, d, h, h + 1, owned_lo, owned_hi)
         else
-            _axis_exchange_fused!(buffers, fields, topo, d, h, h, owned_lo, owned_hi)
+            axis_exchange_fused!(buffers, fields, topo, d, h, h, owned_lo, owned_hi)
         end
     end
     return fields
@@ -263,9 +281,9 @@ function weno_exchange_halo!(
         owned_lo = h + 1
         owned_hi = h + owned[d]
         if d == stagger
-            _axis_exchange!(buffers, field, topo, d, h, h + 1, owned_lo, owned_hi)
+            axis_exchange!(buffers, field, topo, d, h, h + 1, owned_lo, owned_hi)
         else
-            _axis_exchange!(buffers, field, topo, d, h, h, owned_lo, owned_hi)
+            axis_exchange!(buffers, field, topo, d, h, h, owned_lo, owned_hi)
         end
     end
     return field

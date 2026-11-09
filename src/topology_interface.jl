@@ -100,6 +100,15 @@ struct EmptyHaloBuffers end
 Base.getproperty(::EmptyHaloBuffers, ::Symbol) = EmptyHaloBuffers()
 
 """
+    release_halo_buffers!(buffers)
+
+Free the persistent MPI requests held by a scheme's halo buffers. No-op for
+schemes without exchange buffers.
+"""
+release_halo_buffers!(::EmptyHaloBuffers) = nothing
+release_halo_buffers!(buffers::NamedTuple) = foreach(release_halo_buffers!, values(buffers))
+
+"""
     halo_buffers_for(topo, extent::PaddedExtent, stag::Bool, ::Type{T}) where T
 
 Build a scheme's halo buffers. The default returns `EmptyHaloBuffers()`;

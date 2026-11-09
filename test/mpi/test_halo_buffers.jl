@@ -82,3 +82,32 @@ end
     mismatched = zeros(Float64, owned[1] + 2halo[1], owned[2] + 2halo[2])
     @test_throws ArgumentError weno_exchange_halo!(mismatched, topo, scheme.halo_buffers.center)
 end
+
+# On one rank the periodic axis is a local copy, so no MPI requests exist.
+if MPI.Comm_size(MPI.COMM_WORLD) > 1
+    @testset "close frees persistent halo requests" begin
+        nprocs = MPI.Comm_size(MPI.COMM_WORLD)
+        halo_width = 3
+        topo = weno_cartesian_topology(
+            ((halo_width + 1) * nprocs, halo_width + 1); halo = halo_width, dims = (nprocs, 1),
+            periodic = (true, false),
+        )
+        halo = FiniteDiffWENO5.weno_halo(topo)
+        owned = FiniteDiffWENO5.weno_owned_size(topo)
+        field = zeros(owned[1] + 2halo[1], owned[2] + 2halo[2])
+
+        scheme = WENOScheme(
+            copy(field), topo;
+            boundary = (PeriodicBC(), PeriodicBC(), ExtrapolateBC(), ExtrapolateBC()),
+            form = :nonconservative, stag = true,
+        )
+        sets = [set for buffers in values(scheme.halo_buffers) for set in buffers.reqs]
+        @test any(set -> !isempty(set.requests), sets)
+
+        close(scheme)
+        close(scheme)
+        @test all(set -> all(MPI.isnull, set.requests), sets)
+        @test all(set -> all(==(MPI.REQUEST_NULL.val), set.vals), sets)
+        @test_throws ArgumentError weno_exchange_halo!(field, topo, scheme.halo_buffers.center)
+    end
+end
