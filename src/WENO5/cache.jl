@@ -23,6 +23,14 @@ abstract type AbstractWENO end
 end
 
 """
+    close(scheme::AbstractWENO)
+
+Free the scheme's persistent MPI halo requests. Safe to call more than once;
+the scheme must not be stepped afterwards. No-op for serial schemes.
+"""
+Base.close(scheme::AbstractWENO) = release_halo_buffers!(scheme.halo_buffers)
+
+"""
     WENOScheme(c0::AbstractArray{T, N}; form::Symbol, boundary=nothing, stag=false,
                multithreading=true, lim_ZS=false, upwind_mode=false) where {T, N}
 
