@@ -54,14 +54,18 @@ end
     I = I + O
     i = I[1]
 
-    iL = left_index(i, 1, nx, boundary[1])
-    iR = right_index(i, 1, nx, boundary[2])
+    bL = boundary[1]
+    bR = boundary[2]
+
+    iL = left_index(i, 1, nx, bL)
+    iR = right_index(i, 1, nx, bR)
 
     if stag
         # velocity defined at faces
+        fR = bR isa PeriodicBC ? iR : i + 1
         u[i] = @muladd uo[i] - Δt * (
             max(v.x[i], 0) * (uo[i] - uo[iL]) +
-                min(v.x[(boundary[2] isa PeriodicBC ? iR : i + 1)], 0) * (uo[iR] - uo[i])
+                min(v.x[fR], 0) * (uo[iR] - uo[i])
         ) * Δx_
     else
         # velocity defined at centers
