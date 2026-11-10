@@ -161,18 +161,21 @@ end
     # ---- Upwind update ----
     if stag
         # Velocities defined at faces
+        fRx = boundary[2] isa PeriodicBC ? iRx : i + 1
+        fRy = boundary[4] isa PeriodicBC ? jRy : j + 1
+        fRz = boundary[6] isa PeriodicBC ? kRz : k + 1
         u[i, j, k] = @muladd uo[i, j, k] - Δt * (
             (
                 max(v.x[i, j, k], 0) * (uo[i, j, k] - uo[iLx, j, k]) +
-                    min(v.x[(boundary[2] isa PeriodicBC ? iRx : i + 1), j, k], 0) * (uo[iRx, j, k] - uo[i, j, k])
+                    min(v.x[fRx, j, k], 0) * (uo[iRx, j, k] - uo[i, j, k])
             ) * Δx_ +
                 (
                 max(v.y[i, j, k], 0) * (uo[i, j, k] - uo[i, jLy, k]) +
-                    min(v.y[i, (boundary[4] isa PeriodicBC ? jRy : j + 1), k], 0) * (uo[i, jRy, k] - uo[i, j, k])
+                    min(v.y[i, fRy, k], 0) * (uo[i, jRy, k] - uo[i, j, k])
             ) * Δy_ +
                 (
                 max(v.z[i, j, k], 0) * (uo[i, j, k] - uo[i, j, kLz]) +
-                    min(v.z[i, j, (boundary[6] isa PeriodicBC ? kRz : k + 1)], 0) * (uo[i, j, kRz] - uo[i, j, k])
+                    min(v.z[i, j, fRz], 0) * (uo[i, j, kRz] - uo[i, j, k])
             ) * Δz_
         )
     else
