@@ -116,12 +116,16 @@ end
 function upwind_update_2D!(
         u, v, weno, nx, ny, Δx_, Δy_, Δt
     )
-    (; boundary, stag, multithreading, form) = weno
+    (; boundary, stag, multithreading, form, ut) = weno
 
     bLx = boundary[1]
     bRx = boundary[2]
     bLy = boundary[3]
     bRy = boundary[4]
+
+    copyto!(ut, u)
+    staggered = stag && is_conservative(form)
+    staggered && validate_staggered_velocity!(weno.vcenter, v; periodic = weno.vperiodic)
 
     @inbounds @maybe_threads multithreading for I in CartesianIndices(u)
         i, j = Tuple(I)
@@ -131,26 +135,28 @@ function upwind_update_2D!(
         jLy = left_index(j - 1, 0, ny, bLy)
         jRy = right_index(j + 1, 0, ny, bRy)
 
-        if stag && is_conservative(form)
-            u[i, j] -= Δt * (
+        if staggered
+            fRx = bRx isa PeriodicBC ? iRx : i + 1
+            fRy = bRy isa PeriodicBC ? jRy : j + 1
+            u[i, j] = ut[i, j] - Δt * (
                 (
-                    max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +
-                        min(v.x[iRx, j], 0) * (u[iRx, j] - u[i, j])
+                    max(v.x[i, j], 0) * (ut[i, j] - ut[iLx, j]) +
+                        min(v.x[fRx, j], 0) * (ut[iRx, j] - ut[i, j])
                 ) * Δx_ +
                     (
-                    max(v.y[i, j], 0) * (u[i, j] - u[i, jLy]) +
-                        min(v.y[i, jRy], 0) * (u[i, jRy] - u[i, j])
+                    max(v.y[i, j], 0) * (ut[i, j] - ut[i, jLy]) +
+                        min(v.y[i, fRy], 0) * (ut[i, jRy] - ut[i, j])
                 ) * Δy_
             )
         else
-            u[i, j] -= Δt * (
+            u[i, j] = ut[i, j] - Δt * (
                 (
-                    max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +
-                        min(v.x[i, j], 0) * (u[iRx, j] - u[i, j])
+                    max(v.x[i, j], 0) * (ut[i, j] - ut[iLx, j]) +
+                        min(v.x[i, j], 0) * (ut[iRx, j] - ut[i, j])
                 ) * Δx_ +
                     (
-                    max(v.y[i, j], 0) * (u[i, j] - u[i, jLy]) +
-                        min(v.y[i, j], 0) * (u[i, jRy] - u[i, j])
+                    max(v.y[i, j], 0) * (ut[i, j] - ut[i, jLy]) +
+                        min(v.y[i, j], 0) * (ut[i, jRy] - ut[i, j])
                 ) * Δy_
             )
         end

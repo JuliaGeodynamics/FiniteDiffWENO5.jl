@@ -95,24 +95,29 @@ using velocity field `v`.
 - Uses the boundary conditions stored in `weno.boundary`.
 """
 function upwind_update_1D!(u, v, weno, nx, Δx_, Δt)
-    (; boundary, stag, multithreading, form) = weno
+    (; boundary, stag, multithreading, form, ut) = weno
 
     bL = boundary[1]
     bR = boundary[2]
+
+    copyto!(ut, u)
+    staggered = stag && is_conservative(form)
+    staggered && validate_staggered_velocity!(weno.vcenter, v; periodic = weno.vperiodic)
 
     @inbounds @maybe_threads multithreading for i in axes(u, 1)
         iL = left_index(i - 1, 0, nx, bL)
         iR = right_index(i + 1, 0, nx, bR)
 
-        if stag && is_conservative(form)
-            u[i] -= Δt * (
-                max(v.x[i], 0) * (u[i] - u[iL]) +
-                    min(v.x[iR], 0) * (u[iR] - u[i])
+        if staggered
+            fR = bR isa PeriodicBC ? iR : i + 1
+            u[i] = ut[i] - Δt * (
+                max(v.x[i], 0) * (ut[i] - ut[iL]) +
+                    min(v.x[fR], 0) * (ut[iR] - ut[i])
             ) * Δx_
         else
-            u[i] -= Δt * (
-                max(v.x[i], 0) * (u[i] - u[iL]) +
-                    min(v.x[i], 0) * (u[iR] - u[i])
+            u[i] = ut[i] - Δt * (
+                max(v.x[i], 0) * (ut[i] - ut[iL]) +
+                    min(v.x[i], 0) * (ut[iR] - ut[i])
             ) * Δx_
         end
     end

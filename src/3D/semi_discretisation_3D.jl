@@ -171,7 +171,7 @@ end
 function upwind_update_3D!(
         u, v, weno, nx, ny, nz, Δx_, Δy_, Δz_, Δt
     )
-    (; boundary, stag, multithreading, form) = weno
+    (; boundary, stag, multithreading, form, ut) = weno
 
     bLx = boundary[1]
     bRx = boundary[2]
@@ -179,6 +179,10 @@ function upwind_update_3D!(
     bRy = boundary[4]
     bLz = boundary[5]
     bRz = boundary[6]
+
+    copyto!(ut, u)
+    staggered = stag && is_conservative(form)
+    staggered && validate_staggered_velocity!(weno.vcenter, v; periodic = weno.vperiodic)
 
     @inbounds @maybe_threads multithreading for I in CartesianIndices(u)
         i, j, k = Tuple(I)
@@ -190,34 +194,37 @@ function upwind_update_3D!(
         kLz = left_index(k - 1, 0, nz, bLz)
         kRz = right_index(k + 1, 0, nz, bRz)
 
-        if stag && is_conservative(form)
-            u[i, j, k] -= Δt * (
+        if staggered
+            fRx = bRx isa PeriodicBC ? iRx : i + 1
+            fRy = bRy isa PeriodicBC ? jRy : j + 1
+            fRz = bRz isa PeriodicBC ? kRz : k + 1
+            u[i, j, k] = ut[i, j, k] - Δt * (
                 (
-                    max(v.x[i, j, k], 0) * (u[i, j, k] - u[iLx, j, k]) +
-                        min(v.x[iRx, j, k], 0) * (u[iRx, j, k] - u[i, j, k])
+                    max(v.x[i, j, k], 0) * (ut[i, j, k] - ut[iLx, j, k]) +
+                        min(v.x[fRx, j, k], 0) * (ut[iRx, j, k] - ut[i, j, k])
                 ) * Δx_ +
                     (
-                    max(v.y[i, j, k], 0) * (u[i, j, k] - u[i, jLy, k]) +
-                        min(v.y[i, jRy, k], 0) * (u[i, jRy, k] - u[i, j, k])
+                    max(v.y[i, j, k], 0) * (ut[i, j, k] - ut[i, jLy, k]) +
+                        min(v.y[i, fRy, k], 0) * (ut[i, jRy, k] - ut[i, j, k])
                 ) * Δy_ +
                     (
-                    max(v.z[i, j, k], 0) * (u[i, j, k] - u[i, j, kLz]) +
-                        min(v.z[i, j, kRz], 0) * (u[i, j, kRz] - u[i, j, k])
+                    max(v.z[i, j, k], 0) * (ut[i, j, k] - ut[i, j, kLz]) +
+                        min(v.z[i, j, fRz], 0) * (ut[i, j, kRz] - ut[i, j, k])
                 ) * Δz_
             )
         else
-            u[i, j, k] -= Δt * (
+            u[i, j, k] = ut[i, j, k] - Δt * (
                 (
-                    max(v.x[i, j, k], 0) * (u[i, j, k] - u[iLx, j, k]) +
-                        min(v.x[i, j, k], 0) * (u[iRx, j, k] - u[i, j, k])
+                    max(v.x[i, j, k], 0) * (ut[i, j, k] - ut[iLx, j, k]) +
+                        min(v.x[i, j, k], 0) * (ut[iRx, j, k] - ut[i, j, k])
                 ) * Δx_ +
                     (
-                    max(v.y[i, j, k], 0) * (u[i, j, k] - u[i, jLy, k]) +
-                        min(v.y[i, j, k], 0) * (u[i, jRy, k] - u[i, j, k])
+                    max(v.y[i, j, k], 0) * (ut[i, j, k] - ut[i, jLy, k]) +
+                        min(v.y[i, j, k], 0) * (ut[i, jRy, k] - ut[i, j, k])
                 ) * Δy_ +
                     (
-                    max(v.z[i, j, k], 0) * (u[i, j, k] - u[i, j, kLz]) +
-                        min(v.z[i, j, k], 0) * (u[i, j, kRz] - u[i, j, k])
+                    max(v.z[i, j, k], 0) * (ut[i, j, k] - ut[i, j, kLz]) +
+                        min(v.z[i, j, k], 0) * (ut[i, j, kRz] - ut[i, j, k])
                 ) * Δz_
             )
         end

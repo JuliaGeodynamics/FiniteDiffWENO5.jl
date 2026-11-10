@@ -101,7 +101,7 @@ end
 end
 
 @kernel function upwind_update_KA_2D!(
-        u, v, nx, ny, Δx_, Δy_, Δt, stag, boundary, g, O
+        u, uo, v, nx, ny, Δx_, Δy_, Δt, stag, boundary, g, O
     )
     I = @index(Global, NTuple)
     I = I + O
@@ -116,26 +116,28 @@ end
     # ---- Upwind update ----
     if stag
         # Velocities defined at faces
-        u[i, j] -= @muladd Δt * (
+        fRx = boundary[2] isa PeriodicBC ? iRx : i + 1
+        fRy = boundary[4] isa PeriodicBC ? jRy : j + 1
+        u[i, j] = @muladd uo[i, j] - Δt * (
             (
-                max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +
-                    min(v.x[iRx, j], 0) * (u[iRx, j] - u[i, j])
+                max(v.x[i, j], 0) * (uo[i, j] - uo[iLx, j]) +
+                    min(v.x[fRx, j], 0) * (uo[iRx, j] - uo[i, j])
             ) * Δx_ +
                 (
-                max(v.y[i, j], 0) * (u[i, j] - u[i, jLy]) +
-                    min(v.y[i, jRy], 0) * (u[i, jRy] - u[i, j])
+                max(v.y[i, j], 0) * (uo[i, j] - uo[i, jLy]) +
+                    min(v.y[i, fRy], 0) * (uo[i, jRy] - uo[i, j])
             ) * Δy_
         )
     else
         # Velocities defined at centers
-        u[i, j] -= @muladd Δt * (
+        u[i, j] = @muladd uo[i, j] - Δt * (
             (
-                max(v.x[i, j], 0) * (u[i, j] - u[iLx, j]) +
-                    min(v.x[i, j], 0) * (u[iRx, j] - u[i, j])
+                max(v.x[i, j], 0) * (uo[i, j] - uo[iLx, j]) +
+                    min(v.x[i, j], 0) * (uo[iRx, j] - uo[i, j])
             ) * Δx_ +
                 (
-                max(v.y[i, j], 0) * (u[i, j] - u[i, jLy]) +
-                    min(v.y[i, j], 0) * (u[i, jRy] - u[i, j])
+                max(v.y[i, j], 0) * (uo[i, j] - uo[i, jLy]) +
+                    min(v.y[i, j], 0) * (uo[i, jRy] - uo[i, j])
             ) * Δy_
         )
     end

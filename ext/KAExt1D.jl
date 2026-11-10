@@ -48,26 +48,30 @@ end
 end
 
 @kernel inbounds = true function upwind_update_KA_1D!(
-        u, v, nx, Δx_, Δt, stag, boundary, g, O
+        u, uo, v, nx, Δx_, Δt, stag, boundary, g, O
     )
     I = @index(Global, NTuple)
     I = I + O
     i = I[1]
 
-    iL = left_index(i, 1, nx, boundary[1])
-    iR = right_index(i, 1, nx, boundary[2])
+    bL = boundary[1]
+    bR = boundary[2]
+
+    iL = left_index(i, 1, nx, bL)
+    iR = right_index(i, 1, nx, bR)
 
     if stag
         # velocity defined at faces
-        u[i] -= @muladd Δt * (
-            max(v.x[i], 0) * (u[i] - u[iL]) +
-                min(v.x[iR], 0) * (u[iR] - u[i])
+        fR = bR isa PeriodicBC ? iR : i + 1
+        u[i] = @muladd uo[i] - Δt * (
+            max(v.x[i], 0) * (uo[i] - uo[iL]) +
+                min(v.x[fR], 0) * (uo[iR] - uo[i])
         ) * Δx_
     else
         # velocity defined at centers
-        u[i] -= @muladd Δt * (
-            max(v.x[i], 0) * (u[i] - u[iL]) +
-                min(v.x[i], 0) * (u[iR] - u[i])
+        u[i] = @muladd uo[i] - Δt * (
+            max(v.x[i], 0) * (uo[i] - uo[iL]) +
+                min(v.x[i], 0) * (uo[iR] - uo[i])
         ) * Δx_
     end
 end

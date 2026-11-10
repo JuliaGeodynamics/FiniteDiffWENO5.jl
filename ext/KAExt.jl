@@ -256,8 +256,10 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x,), <:Tuple{<:AbstractArray{<:Real
     else
         kernel_upwind = upwind_update_KA_1D!(backend)
         vupwind = conservative ? v : prepare_velocity_KA_1D!(weno, v, nx, backend)
+        stag && conservative && FiniteDiffWENO5.validate_staggered_velocity!(weno.vcenter, v; periodic = weno.vperiodic)
+        copyto!(ut, u)
         kernel_upwind(
-            u, vupwind, nx, Δx_, Δt, stag && conservative, boundary,
+            u, ut, vupwind, nx, Δx_, Δt, stag && conservative, boundary,
             nothing, Offset0, ndrange = length(u),
         )
 
@@ -350,8 +352,10 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArra
 
         kernel_upwind = upwind_update_KA_2D!(backend)
         vupwind = conservative ? v : prepare_velocity_KA_2D!(weno, v, nx, ny, backend)
+        stag && conservative && FiniteDiffWENO5.validate_staggered_velocity!(weno.vcenter, v; periodic = weno.vperiodic)
+        copyto!(ut, u)
         kernel_upwind(
-            u, vupwind, nx, ny, Δx_, Δy_, Δt, stag && conservative, boundary,
+            u, ut, vupwind, nx, ny, Δx_, Δy_, Δt, stag && conservative, boundary,
             nothing, Offset0, ndrange = u_l,
         )
     end
@@ -452,8 +456,10 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstract
 
         kernel_upwind = upwind_update_KA_3D!(backend)
         vupwind = conservative ? v : prepare_velocity_KA_3D!(weno, v, nx, ny, nz, backend)
+        stag && conservative && FiniteDiffWENO5.validate_staggered_velocity!(weno.vcenter, v; periodic = weno.vperiodic)
+        copyto!(ut, u)
         kernel_upwind(
-            u, vupwind, nx, ny, nz, Δx_, Δy_, Δz_, Δt, stag && conservative, boundary,
+            u, ut, vupwind, nx, ny, nz, Δx_, Δy_, Δz_, Δt, stag && conservative, boundary,
             nothing, Offset0, ndrange = u_l,
         )
 
