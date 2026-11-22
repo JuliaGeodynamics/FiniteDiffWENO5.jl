@@ -187,8 +187,10 @@ end
         n = 32
         x, xf = ((1:n) .- 0.5) ./ n, (0:n) ./ n
         initial() = [1 + 0.5cospi(2xi) * sinpi(yj) for xi in x, yj in x]
-        v = (; x = [sinpi(xi) * (1 + 0.5yj) + 0.1 for xi in xf, yj in x],
-            y = [0.5sinpi(yj) * (1 + xi) - 0.1 for xi in x, yj in xf])
+        v = (;
+            x = [sinpi(xi) * (1 + 0.5yj) + 0.1 for xi in xf, yj in x],
+            y = [0.5sinpi(yj) * (1 + xi) - 0.1 for xi in x, yj in xf],
+        )
         cu, ku = initial(), initial()
         cpu = WENOScheme(cu; form = :conservative, stag = true, multithreading = false)
         ka = WENOScheme(ku, BACKEND; form = :conservative, stag = true)

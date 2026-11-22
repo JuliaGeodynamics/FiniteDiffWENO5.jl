@@ -9,8 +9,10 @@ wall_grid(n) = (((1:n) .- 0.5) ./ n, (0:n) ./ n)
 function wall_case_2D(n)
     x, xf = wall_grid(n)
     u0 = [1 + 0.5cospi(2xi) * sinpi(yj) for xi in x, yj in x]
-    v = (; x = [sinpi(xi) * (1 + 0.5yj) for xi in xf, yj in x],
-        y = [0.5sinpi(yj) * (1 + xi) for xi in x, yj in xf])
+    v = (;
+        x = [sinpi(xi) * (1 + 0.5yj) for xi in xf, yj in x],
+        y = [0.5sinpi(yj) * (1 + xi) for xi in x, yj in xf],
+    )
     return u0, v
 end
 
@@ -46,9 +48,11 @@ relerr(u, u0) = abs(sum(u) - sum(u0)) / sum(u0)
         n = 16
         x, xf = wall_grid(n)
         u0 = [1 + 0.3cospi(2xi) * cospi(2yj) * sinpi(zk) for xi in x, yj in x, zk in x]
-        v = (; x = [sinpi(xi) for xi in xf, _ in x, _ in x],
+        v = (;
+            x = [sinpi(xi) for xi in xf, _ in x, _ in x],
             y = [sinpi(yj) for _ in x, yj in xf, _ in x],
-            z = [sinpi(zk) for _ in x, _ in x, zk in xf])
+            z = [sinpi(zk) for _ in x, _ in x, zk in xf],
+        )
         u = copy(u0)
         weno = scheme(u)
         for _ in 1:10
