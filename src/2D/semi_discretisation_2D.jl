@@ -166,17 +166,17 @@ function upwind_update_2D!(
 end
 
 """
-    scalar_operator_2D!(du, state, vcell, weno, nx, ny, Δx_, Δy_, u_min, u_max)
+    scalar_operator_2D!(du, state, vcell, weno, nx, ny, Δx_, Δy_, u_min, u_max; vface = nothing)
 
 Two-dimensional counterpart of [`scalar_operator_1D!`](@ref): select the spatial
 operator from `weno.form`, never from the velocity layout.
 """
-@inline function scalar_operator_2D!(du, state, vcell, weno::WENOScheme, nx, ny, Δx_, Δy_, u_min, u_max, αx, αy)
+@inline function scalar_operator_2D!(du, state, vcell, weno::WENOScheme, nx, ny, Δx_, Δy_, u_min, u_max; vface = nothing)
     if !is_conservative(weno.form)
         WENO_flux!(weno.fl, weno.fr, state, weno, nx, ny, u_max, u_min)
         material_semi_discretisation_weno5!(du, vcell, weno, Δx_, Δy_)
     else
-        conservative_semi_discretisation_weno5!(du, state, vcell, weno, nx, ny, Δx_, Δy_, αx, αy)
+        conservative_semi_discretisation_weno5!(du, state, vcell, weno, nx, ny, Δx_, Δy_; vface)
     end
     return nothing
 end

@@ -26,9 +26,8 @@ function conservative_error(n; stag)
         (; x = manufactured_v.(x))
 
     vcell = FiniteDiffWENO5.prepare_velocity!(weno, velocity)
-    α = FiniteDiffWENO5.lf_speed(vcell.x)
     FiniteDiffWENO5.conservative_semi_discretisation_weno5!(
-        weno.du, u, vcell, weno, n, inv(Δx), α,
+        weno.du, u, vcell, weno, n, inv(Δx),
     )
     return Δx * sum(abs, weno.du .- manufactured_dflux.(x)), weno
 end
@@ -70,9 +69,8 @@ end
         velocity = (; x = fill(1.0, n))
 
         conservative = WENOScheme(u; form = :conservative, boundary, stag = false, multithreading = false)
-        α = FiniteDiffWENO5.lf_speed(velocity.x)
         FiniteDiffWENO5.conservative_semi_discretisation_weno5!(
-            conservative.du, u, velocity, conservative, n, inv(Δx), α,
+            conservative.du, u, velocity, conservative, n, inv(Δx),
         )
 
         material = WENOScheme(u; form = :nonconservative, boundary, stag = false, multithreading = false)
@@ -110,9 +108,8 @@ end
             (x = [vx2(xi, yj) for xi in faces, yj in x], y = [vy2(xi, yj) for xi in x, yj in faces]) :
             (x = [vx2(xi, yj) for xi in x, yj in x], y = [vy2(xi, yj) for xi in x, yj in x])
         vcell = FiniteDiffWENO5.prepare_velocity!(weno, velocity)
-        αx, αy = FiniteDiffWENO5.lf_speed(vcell.x), FiniteDiffWENO5.lf_speed(vcell.y)
         FiniteDiffWENO5.conservative_semi_discretisation_weno5!(
-            weno.du, u, vcell, weno, n, n, inv(Δ), inv(Δ), αx, αy,
+            weno.du, u, vcell, weno, n, n, inv(Δ), inv(Δ),
         )
         return Δ^2 * sum(abs, weno.du .- [dflux2(xi, yj) for xi in x, yj in x]), weno
     end

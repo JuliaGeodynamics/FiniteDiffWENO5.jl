@@ -20,7 +20,7 @@ Advance the solution `u` by one time step using the 3rd-order SSP Runge-Kutta me
 Citation: Borges et al. 2008: "An improved weighted essentially non-oscillatory scheme for hyperbolic conservation laws"
           doi:10.1016/j.jcp.2007.11.038
 """
-function WENO_step!(u::T, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<:Real}, 2}}}, weno::WENOScheme, Δt, Δx, Δy; u_min = 0.0, u_max = 0.0, lf_speeds = nothing) where {T <: AbstractArray{<:Real, 2}}
+function WENO_step!(u::T, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<:Real}, 2}}}, weno::WENOScheme, Δt, Δx, Δy; u_min = 0.0, u_max = 0.0, face_velocity = nothing) where {T <: AbstractArray{<:Real, 2}}
 
     nx, ny = size(u, 1), size(u, 2)
     Δx_, Δy_ = inv(Δx), inv(Δy)
@@ -28,29 +28,26 @@ function WENO_step!(u::T, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<
     (; ut, du, stag, fl, fr, multithreading, upwind_mode, form) = weno
 
     if !upwind_mode
-        # Prepare velocity and collective LF speeds once for all RK stages.
+        # Prepare velocity once for all RK stages.
         voperator = prepare_velocity!(weno, v)
-        conservative = is_conservative(form)
-        speeds = lf_speeds === nothing ? scheme_lf_speeds(weno, voperator) : lf_speeds
-        αx = conservative ? speeds.x : zero(eltype(u))
-        αy = conservative ? speeds.y : zero(eltype(u))
+        vface = conservative_face_velocity(weno, v, face_velocity)
 
         sync_stage!(weno, u)
-        scalar_operator_2D!(du, u, voperator, weno, nx, ny, Δx_, Δy_, u_min, u_max, αx, αy)
+        scalar_operator_2D!(du, u, voperator, weno, nx, ny, Δx_, Δy_, u_min, u_max; vface)
 
         @inbounds @maybe_threads multithreading for I in CartesianIndices(ut)
             ut[I] = @muladd u[I] - Δt * du[I]
         end
 
         sync_stage!(weno, ut)
-        scalar_operator_2D!(du, ut, voperator, weno, nx, ny, Δx_, Δy_, u_min, u_max, αx, αy)
+        scalar_operator_2D!(du, ut, voperator, weno, nx, ny, Δx_, Δy_, u_min, u_max; vface)
 
         @inbounds @maybe_threads multithreading for I in CartesianIndices(ut)
             ut[I] = @muladd 0.75 * u[I] + 0.25 * ut[I] - 0.25 * Δt * du[I]
         end
 
         sync_stage!(weno, ut)
-        scalar_operator_2D!(du, ut, voperator, weno, nx, ny, Δx_, Δy_, u_min, u_max, αx, αy)
+        scalar_operator_2D!(du, ut, voperator, weno, nx, ny, Δx_, Δy_, u_min, u_max; vface)
 
         @inbounds @maybe_threads multithreading for I in CartesianIndices(u)
             u[I] = @muladd 1.0 / 3.0 * u[I] + 2.0 / 3.0 * ut[I] - (2.0 / 3.0) * Δt * du[I]

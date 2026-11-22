@@ -20,9 +20,8 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
         vcell = (; x = inflow_detfield(n) .+ 0.5)
 
         weno_s = WENOScheme(copy(u); boundary, form, stag = false, multithreading = false)
-        α_s = form === :conservative ? FiniteDiffWENO5.lf_speed(vcell.x) : 0.0
         du_s = zeros(n)
-        scalar_operator_1D!(du_s, u, vcell, weno_s, n, inv(n), 0.0, 1.0, α_s)
+        scalar_operator_1D!(du_s, u, vcell, weno_s, n, inv(n), 0.0, 1.0)
 
         c0 = zeros(n + 2halo)
         c0[(halo + 1):(halo + n)] .= u
@@ -34,9 +33,8 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
         fill_physical_ghosts!(vcell_p, extent, boundary)
 
         weno_p = padded_weno_scheme(zeros(n + 2halo), (halo,); boundary, form, stag = false, multithreading = false)
-        α_p = form === :conservative ? FiniteDiffWENO5.lf_speed(view(vcell_p, (halo + 1):(halo + n))) : 0.0
         du_p = zeros(n + 2halo)
-        scalar_operator_1D!(du_p, c0, (; x = vcell_p), weno_p, n + 2halo, inv(n), 0.0, 1.0, α_p)
+        scalar_operator_1D!(du_p, c0, (; x = vcell_p), weno_p, n + 2halo, inv(n), 0.0, 1.0)
 
         @test du_p[(halo + 1):(halo + n)] == du_s
     end
@@ -51,7 +49,7 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
 
         weno_s = WENOScheme(copy(u); boundary, form = :nonconservative, stag = false, multithreading = false)
         du_s = zeros(nx, ny)
-        scalar_operator_2D!(du_s, u, vcell, weno_s, nx, ny, inv(nx), inv(ny), 0.0, 1.0, 0.0, 0.0)
+        scalar_operator_2D!(du_s, u, vcell, weno_s, nx, ny, inv(nx), inv(ny), 0.0, 1.0)
 
         c0 = zeros(nx + 2halo, ny + 2halo)
         c0[(halo + 1):(halo + nx), (halo + 1):(halo + ny)] .= u
@@ -69,7 +67,7 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
 
         weno_p = padded_weno_scheme(zeros(nx + 2halo, ny + 2halo), (halo, halo); boundary, form = :nonconservative, stag = false, multithreading = false)
         du_p = zeros(nx + 2halo, ny + 2halo)
-        scalar_operator_2D!(du_p, c0, vcell_p, weno_p, nx + 2halo, ny + 2halo, inv(nx), inv(ny), 0.0, 1.0, 0.0, 0.0)
+        scalar_operator_2D!(du_p, c0, vcell_p, weno_p, nx + 2halo, ny + 2halo, inv(nx), inv(ny), 0.0, 1.0)
 
         @test du_p[(halo + 1):(halo + nx), (halo + 1):(halo + ny)] == du_s
     end
@@ -83,7 +81,7 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
 
         weno_s = WENOScheme(copy(u); boundary, form = :nonconservative, stag = false, multithreading = false)
         du_s = zeros(n, n, n)
-        scalar_operator_3D!(du_s, u, vcell, weno_s, n, n, n, inv(n), inv(n), inv(n), 0.0, 1.0, 0.0, 0.0, 0.0)
+        scalar_operator_3D!(du_s, u, vcell, weno_s, n, n, n, inv(n), inv(n), inv(n), 0.0, 1.0)
 
         c0 = zeros(n + 2halo, n + 2halo, n + 2halo)
         c0[(halo + 1):(halo + n), (halo + 1):(halo + n), (halo + 1):(halo + n)] .= u
@@ -102,7 +100,7 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
         weno_p = padded_weno_scheme(zeros(n + 2halo, n + 2halo, n + 2halo), (halo, halo, halo); boundary, form = :nonconservative, stag = false, multithreading = false)
         npad = n + 2halo
         du_p = zeros(npad, npad, npad)
-        scalar_operator_3D!(du_p, c0, vcell_p, weno_p, npad, npad, npad, inv(n), inv(n), inv(n), 0.0, 1.0, 0.0, 0.0, 0.0)
+        scalar_operator_3D!(du_p, c0, vcell_p, weno_p, npad, npad, npad, inv(n), inv(n), inv(n), 0.0, 1.0)
 
         @test du_p[r, r, r] ≈ du_s rtol = 0 atol = 1.0e-13
     end
@@ -117,17 +115,24 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
         u[(halo + 1):(halo + n)] .= inflow_detfield(n)
         u[1:halo] .= -999.0 # garbage pad — if the fix reads array-begin this leaks in
         u[(halo + n + 1):end] .= -999.0
-        v = ones(n + 2halo)
+        v = zeros(n + 2halo)
+        v[(halo + 1):(halo + n)] .= 1 .+ 0.1 .* (1:n)
+        v[1:halo] .= -999.0 # a ghost read would set α = 999
+        v[(halo + n + 1):end] .= -999.0
         boundary = (PrescribedInflowBC(1.0), PrescribedInflowBC(2.0))
         extent = PaddedExtent{1}((n,), (halo,), (n,), (false,), :cell)
 
         fl = (; x = zeros(n + 2halo + 1))
         fr = (; x = zeros(n + 2halo + 1))
-        α = 5.0
-        FiniteDiffWENO5.apply_conservative_inflow_1d!(fl, fr, u, v, α, boundary, extent)
+        FiniteDiffWENO5.apply_conservative_inflow_1d!(fl, fr, u, v, boundary, extent)
 
-        expected_lo = FiniteDiffWENO5.lf_split_minus(u[halo + 1], v[halo + 1], α)
-        expected_hi = FiniteDiffWENO5.lf_split_plus(u[halo + n], v[halo + n], α)
+        # Local α of each physical face: its six stencil cells, clamped to owned cells.
+        lo, hi = halo + 1, halo + n
+        α_lo = FiniteDiffWENO5.stencil_lf_speed((v[clamp(lo - 4 + k, lo, hi)] for k in 1:6)...)
+        α_hi = FiniteDiffWENO5.stencil_lf_speed((v[clamp(hi + 1 - 4 + k, lo, hi)] for k in 1:6)...)
+        @test α_lo == v[halo + 3] && α_hi == v[halo + n]
+        expected_lo = FiniteDiffWENO5.lf_split_minus(u[halo + 1], v[halo + 1], α_lo)
+        expected_hi = FiniteDiffWENO5.lf_split_plus(u[halo + n], v[halo + n], α_hi)
         @test fr.x[halo + 1] == expected_lo
         @test fl.x[halo + n + 1] == expected_hi
         # nothing written at the array edges themselves
@@ -227,7 +232,7 @@ inflow_detfield(n, m, p) = [1.0 + 0.2sinpi(2 * (i - 0.5) / n) * cospi(2 * (j - 0
         u = inflow_detfield(n)
         vcell = (; x = ones(n))
         du = zeros(n)
-        scalar_operator_1D!(du, u, vcell, weno, n, inv(n), 0.0, 1.0, 0.0)
+        scalar_operator_1D!(du, u, vcell, weno, n, inv(n), 0.0, 1.0)
         # sanity: the operator ran without needing padding-specific arguments
         @test all(isfinite, du)
     end

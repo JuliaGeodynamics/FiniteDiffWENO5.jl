@@ -234,18 +234,18 @@ function upwind_update_3D!(
 end
 
 """
-    scalar_operator_3D!(du, state, vcell, weno, nx, ny, nz, Δx_, Δy_, Δz_, u_min, u_max)
+    scalar_operator_3D!(du, state, vcell, weno, nx, ny, nz, Δx_, Δy_, Δz_, u_min, u_max; vface = nothing)
 
 Three-dimensional counterpart of [`scalar_operator_1D!`](@ref).
 """
-@inline function scalar_operator_3D!(du, state, vcell, weno::WENOScheme, nx, ny, nz, Δx_, Δy_, Δz_, u_min, u_max, αx, αy, αz)
+@inline function scalar_operator_3D!(du, state, vcell, weno::WENOScheme, nx, ny, nz, Δx_, Δy_, Δz_, u_min, u_max; vface = nothing)
     if !is_conservative(weno.form)
         # NOTE: 3D passes (u_min, u_max) while 2D passes (u_max, u_min); both
         # orderings are preserved exactly as they were before form dispatch.
         WENO_flux!(weno.fl, weno.fr, state, weno, nx, ny, nz, u_min, u_max)
         material_semi_discretisation_weno5!(du, vcell, weno, Δx_, Δy_, Δz_)
     else
-        conservative_semi_discretisation_weno5!(du, state, vcell, weno, nx, ny, nz, Δx_, Δy_, Δz_, αx, αy, αz)
+        conservative_semi_discretisation_weno5!(du, state, vcell, weno, nx, ny, nz, Δx_, Δy_, Δz_; vface)
     end
     return nothing
 end

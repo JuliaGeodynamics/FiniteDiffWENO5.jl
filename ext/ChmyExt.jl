@@ -486,7 +486,7 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
 - `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
-function WENO_step!(u::T_field, v::Velocity1D, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0) where {T_field <: AbstractField{<:Real, 1}}
+function WENO_step!(u::T_field, v::Velocity1D, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0, face_velocity = nothing) where {T_field <: AbstractField{<:Real, 1}}
 
     @assert get_backend(u) == get_backend(v.x)
 
@@ -504,11 +504,10 @@ function WENO_step!(u::T_field, v::Velocity1D, weno::FiniteDiffWENO5.WENOScheme,
 
     if !upwind_mode
         vcell = prepare_velocity_chmy_1D!(weno, v, nx, grid, arch, launch)
-        α = conservative ? FiniteDiffWENO5.lf_speed(interior(vcell.x), maximum) : zero(eltype(u))
 
         function stage!(state)
             if conservative
-                launch(arch, grid, WENO_conservative_flux_KA_1D! => (fl.x, fr.x, state, vcell.x, α, boundary, nx, χ, γ, ζ, ϵ, grid))
+                launch(arch, grid, WENO_conservative_flux_KA_1D! => (fl.x, fr.x, state, vcell.x, FiniteDiffWENO5.wall_face_velocity(weno, v, face_velocity, :x), boundary, nx, χ, γ, ζ, ϵ, grid))
                 launch(arch, grid, WENO_conservative_divergence_KA_1D! => (du, fl.x, fr.x, Δx_, grid))
             else
                 launch(arch, grid, WENO_flux_KA_1D => (fl.x, fr.x, state, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
@@ -560,7 +559,7 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
 - `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
-function WENO_step!(u::T_field, v::Velocity2D, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0) where {T_field <: AbstractField{<:Real, 2}}
+function WENO_step!(u::T_field, v::Velocity2D, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0, face_velocity = nothing) where {T_field <: AbstractField{<:Real, 2}}
 
     @assert get_backend(u) == get_backend(v.x)
     @assert get_backend(u) == get_backend(v.y)
@@ -581,13 +580,11 @@ function WENO_step!(u::T_field, v::Velocity2D, weno::FiniteDiffWENO5.WENOScheme,
 
     if !upwind_mode
         vcell = prepare_velocity_chmy_2D!(weno, v, nx, ny, grid, arch, launch)
-        αx = conservative ? FiniteDiffWENO5.lf_speed(interior(vcell.x), maximum) : zero(eltype(u))
-        αy = conservative ? FiniteDiffWENO5.lf_speed(interior(vcell.y), maximum) : zero(eltype(u))
 
         function stage!(state)
             if conservative
-                launch(arch, grid, WENO_conservative_flux_KA_2D_x! => (fl.x, fr.x, state, vcell.x, αx, boundary, nx, χ, γ, ζ, ϵ, grid))
-                launch(arch, grid, WENO_conservative_flux_KA_2D_y! => (fl.y, fr.y, state, vcell.y, αy, boundary, ny, χ, γ, ζ, ϵ, grid))
+                launch(arch, grid, WENO_conservative_flux_KA_2D_x! => (fl.x, fr.x, state, vcell.x, FiniteDiffWENO5.wall_face_velocity(weno, v, face_velocity, :x), boundary, nx, χ, γ, ζ, ϵ, grid))
+                launch(arch, grid, WENO_conservative_flux_KA_2D_y! => (fl.y, fr.y, state, vcell.y, FiniteDiffWENO5.wall_face_velocity(weno, v, face_velocity, :y), boundary, ny, χ, γ, ζ, ϵ, grid))
                 launch(arch, grid, WENO_conservative_divergence_KA_2D! => (du, fl, fr, Δx_, Δy_, grid))
             else
                 launch(arch, grid, WENO_flux_KA_2D_x => (fl.x, fr.x, state, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
@@ -642,7 +639,7 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
 - `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
-function WENO_step!(u::T_field, v::Velocity3D, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, Δz, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0) where {T_field <: AbstractArray{<:Real, 3}}
+function WENO_step!(u::T_field, v::Velocity3D, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, Δz, grid::StructuredGrid, arch; u_min = 0.0, u_max = 0.0, face_velocity = nothing) where {T_field <: AbstractArray{<:Real, 3}}
 
     @assert get_backend(u) == get_backend(v.x)
     @assert get_backend(u) == get_backend(v.y)
@@ -666,15 +663,12 @@ function WENO_step!(u::T_field, v::Velocity3D, weno::FiniteDiffWENO5.WENOScheme,
 
     if !upwind_mode
         vcell = prepare_velocity_chmy_3D!(weno, v, nx, ny, nz, grid, arch, launch)
-        αx = conservative ? FiniteDiffWENO5.lf_speed(interior(vcell.x), maximum) : zero(eltype(u))
-        αy = conservative ? FiniteDiffWENO5.lf_speed(interior(vcell.y), maximum) : zero(eltype(u))
-        αz = conservative ? FiniteDiffWENO5.lf_speed(interior(vcell.z), maximum) : zero(eltype(u))
 
         function stage!(state)
             if conservative
-                launch(arch, grid, WENO_conservative_flux_KA_3D_x! => (fl.x, fr.x, state, vcell.x, αx, boundary, nx, χ, γ, ζ, ϵ, grid))
-                launch(arch, grid, WENO_conservative_flux_KA_3D_y! => (fl.y, fr.y, state, vcell.y, αy, boundary, ny, χ, γ, ζ, ϵ, grid))
-                launch(arch, grid, WENO_conservative_flux_KA_3D_z! => (fl.z, fr.z, state, vcell.z, αz, boundary, nz, χ, γ, ζ, ϵ, grid))
+                launch(arch, grid, WENO_conservative_flux_KA_3D_x! => (fl.x, fr.x, state, vcell.x, FiniteDiffWENO5.wall_face_velocity(weno, v, face_velocity, :x), boundary, nx, χ, γ, ζ, ϵ, grid))
+                launch(arch, grid, WENO_conservative_flux_KA_3D_y! => (fl.y, fr.y, state, vcell.y, FiniteDiffWENO5.wall_face_velocity(weno, v, face_velocity, :y), boundary, ny, χ, γ, ζ, ϵ, grid))
+                launch(arch, grid, WENO_conservative_flux_KA_3D_z! => (fl.z, fr.z, state, vcell.z, FiniteDiffWENO5.wall_face_velocity(weno, v, face_velocity, :z), boundary, nz, χ, γ, ζ, ϵ, grid))
                 launch(arch, grid, WENO_conservative_divergence_KA_3D! => (du, fl, fr, Δx_, Δy_, Δz_, grid))
             else
                 launch(arch, grid, WENO_flux_KA_3D_x => (fl.x, fr.x, state, boundary, nx, χ, γ, ζ, ϵ, lim_ZS, u_min, u_max, grid))
@@ -707,9 +701,8 @@ function WENO_step!(u::T_field, v::Velocity3D, weno::FiniteDiffWENO5.WENOScheme,
 end
 
 
-# Chmy's `VectorField` is not a `NamedTuple`, so the generic tuple forwarder cannot
-# prepare its staggered velocity. These specializations prepare it once only for
-# material transport; conservative staggered upwinding must retain face velocity.
+# Chmy tuple steps: prepare the velocity once and pass the raw face velocity on
+# for the wall flux (conservative upwinding gets it unprepared).
 function WENO_step!(
         u::Tuple{A, Vararg{A, M}}, v::Velocity1D,
         weno::FiniteDiffWENO5.WENOScheme, Δt, Δx,
@@ -722,10 +715,12 @@ function WENO_step!(
         )
     )
     nx = grid.axes[1].length
-    vstep = FiniteDiffWENO5.is_conservative(weno.form) ? v :
-        prepare_velocity_chmy_1D!(weno, v, nx, grid, arch, Launcher(arch, grid))
+    conservative = FiniteDiffWENO5.is_conservative(weno.form)
+    raw = conservative && weno.upwind_mode
+    vstep = raw ? v : prepare_velocity_chmy_1D!(weno, v, nx, grid, arch, Launcher(arch, grid))
+    face_velocity = conservative && !raw ? v : nothing
     for q in eachindex(u)
-        WENO_step!(u[q], vstep, weno, Δt, Δx, grid, arch; u_min = u_min[q], u_max = u_max[q])
+        WENO_step!(u[q], vstep, weno, Δt, Δx, grid, arch; u_min = u_min[q], u_max = u_max[q], face_velocity)
     end
     return nothing
 end
@@ -742,10 +737,12 @@ function WENO_step!(
         )
     )
     nx, ny = grid.axes[1].length, grid.axes[2].length
-    vstep = FiniteDiffWENO5.is_conservative(weno.form) ? v :
-        prepare_velocity_chmy_2D!(weno, v, nx, ny, grid, arch, Launcher(arch, grid))
+    conservative = FiniteDiffWENO5.is_conservative(weno.form)
+    raw = conservative && weno.upwind_mode
+    vstep = raw ? v : prepare_velocity_chmy_2D!(weno, v, nx, ny, grid, arch, Launcher(arch, grid))
+    face_velocity = conservative && !raw ? v : nothing
     for q in eachindex(u)
-        WENO_step!(u[q], vstep, weno, Δt, Δx, Δy, grid, arch; u_min = u_min[q], u_max = u_max[q])
+        WENO_step!(u[q], vstep, weno, Δt, Δx, Δy, grid, arch; u_min = u_min[q], u_max = u_max[q], face_velocity)
     end
     return nothing
 end
@@ -762,10 +759,12 @@ function WENO_step!(
         )
     )
     nx, ny, nz = grid.axes[1].length, grid.axes[2].length, grid.axes[3].length
-    vstep = FiniteDiffWENO5.is_conservative(weno.form) ? v :
-        prepare_velocity_chmy_3D!(weno, v, nx, ny, nz, grid, arch, Launcher(arch, grid))
+    conservative = FiniteDiffWENO5.is_conservative(weno.form)
+    raw = conservative && weno.upwind_mode
+    vstep = raw ? v : prepare_velocity_chmy_3D!(weno, v, nx, ny, nz, grid, arch, Launcher(arch, grid))
+    face_velocity = conservative && !raw ? v : nothing
     for q in eachindex(u)
-        WENO_step!(u[q], vstep, weno, Δt, Δx, Δy, Δz, grid, arch; u_min = u_min[q], u_max = u_max[q])
+        WENO_step!(u[q], vstep, weno, Δt, Δx, Δy, Δz, grid, arch; u_min = u_min[q], u_max = u_max[q], face_velocity)
     end
     return nothing
 end

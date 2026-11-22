@@ -28,11 +28,13 @@ All four combinations are supported and are all fifth order accurate in smooth r
 
 ### Conservative form: Lax-Friedrichs split-flux reconstruction
 
-For `form=:conservative`, the point flux $f = vu$ is formed directly at the locations where $u$ lives, then split globally,
+For `form=:conservative`, the point flux $f = vu$ is formed directly at the locations where $u$ lives, then split separately at every face $i+\tfrac12$,
 ```math
-f^+ = \tfrac12(f + \alpha u), \qquad f^- = \tfrac12(f - \alpha u), \qquad \alpha = \max|v|,
+f^\pm = \tfrac12(f \pm \alpha_{i+1/2}\, u), \qquad \alpha_{i+1/2} = \max_{i-2 \le j \le i+3} |v_j|,
 ```
-so that $\partial f^+/\partial u \ge 0$ and $\partial f^-/\partial u \le 0$. $f^+$ is reconstructed with the upwind-biased WENO operator and $f^-$ with the downwind-biased one, and the numerical flux at each face is their sum; the semi-discrete update differences these face fluxes. This is the standard global Lax-Friedrichs flux-splitting construction, and it is genuinely fifth order because it reconstructs the flux function itself rather than reconstructing $u$ and multiplying afterward.
+so that $\partial f^+/\partial u \ge 0$ and $\partial f^-/\partial u \le 0$. $f^+$ is reconstructed with the upwind-biased WENO operator and $f^-$ with the downwind-biased one, and the numerical flux at each face is their sum; the semi-discrete update differences these face fluxes. It is genuinely fifth order because it reconstructs the flux function itself rather than reconstructing $u$ and multiplying afterward. $\alpha$ is taken over the whole six-cell stencil of the face, so the split is monotone for every value the reconstruction reads and constant within one reconstruction; where the flow is stagnant $\alpha = 0$ and no dissipation is added.
+
+At a `PrescribedInflowBC` face the flux is the first-order Lax-Friedrichs flux $f^+(u_\text{ext}) + f^-(u_\text{int})$ with the same local $\alpha$. With `stag = true`, every `ExtrapolateBC` face (closed wall or open outflow) gets the first-order flux $v_\text{face}\, u_\text{boundary cell}$ of the extrapolated boundary state (upwind for outflow), so a wall with zero normal face velocity conserves $\sum u$ exactly. With `stag = false` there is no face velocity and the reconstructed face flux is kept.
 
 ### Non-conservative (material) form
 

@@ -203,7 +203,7 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
 - `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
-function WENO_step!(u::T_KA, v::NamedTuple{(:x,), <:Tuple{<:AbstractArray{<:Real}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, backend::Backend; u_min = 0.0, u_max = 0.0) where {T_KA <: AbstractVector{<:Real}}
+function WENO_step!(u::T_KA, v::NamedTuple{(:x,), <:Tuple{<:AbstractArray{<:Real}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, backend::Backend; u_min = 0.0, u_max = 0.0, face_velocity = nothing) where {T_KA <: AbstractVector{<:Real}}
 
     @assert get_backend(u) == backend
     @assert get_backend(v.x) == backend
@@ -226,12 +226,11 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x,), <:Tuple{<:AbstractArray{<:Real
         kernel_semi_discretisation_1D = WENO_semi_discretisation_weno5_KA_1D!(backend)
         kernel_cons_flux = WENO_conservative_flux_KA_1D!(backend)
         kernel_cons_div = WENO_conservative_divergence_KA_1D!(backend)
-        α = conservative ? FiniteDiffWENO5.lf_speed(vcell.x, maximum) : zero(eltype(u))
 
         function stage!(state)
             if conservative
                 kernel_cons_flux(
-                    fl.x, fr.x, state, vcell.x, α, boundary, nx, χ, γ, ζ, ϵ,
+                    fl.x, fr.x, state, vcell.x, FiniteDiffWENO5.wall_face_velocity(weno, v, face_velocity, :x), boundary, nx, χ, γ, ζ, ϵ,
                     nothing, Offset0, ndrange = length(fl.x),
                 )
                 synchronize(backend)
@@ -290,7 +289,7 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `u_min`: Minimum value of `u` for the Zhang-Shu positivity limiter.
 - `u_max`: Maximum value of `u` for the Zhang-Shu positivity limiter.
 """
-function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<:Real}, 2}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, backend::Backend; u_min = 0.0, u_max = 0.0) where {T_KA <: AbstractArray{<:Real, 2}}
+function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArray{<:Real}, 2}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, backend::Backend; u_min = 0.0, u_max = 0.0, face_velocity = nothing) where {T_KA <: AbstractArray{<:Real, 2}}
 
     @assert get_backend(u) == backend
     @assert get_backend(v.x) == backend
@@ -320,13 +319,11 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y), <:Tuple{Vararg{AbstractArra
         kernel_cons_x = WENO_conservative_flux_KA_2D_x!(backend)
         kernel_cons_y = WENO_conservative_flux_KA_2D_y!(backend)
         kernel_cons_div = WENO_conservative_divergence_KA_2D!(backend)
-        αx = conservative ? FiniteDiffWENO5.lf_speed(vcell.x, maximum) : zero(eltype(u))
-        αy = conservative ? FiniteDiffWENO5.lf_speed(vcell.y, maximum) : zero(eltype(u))
 
         function stage2!(state)
             if conservative
-                kernel_cons_x(fl.x, fr.x, state, vcell.x, αx, boundary, nx, χ, γ, ζ, ϵ, nothing, Offset0, ndrange = flx_l)
-                kernel_cons_y(fl.y, fr.y, state, vcell.y, αy, boundary, ny, χ, γ, ζ, ϵ, nothing, Offset0, ndrange = fly_l)
+                kernel_cons_x(fl.x, fr.x, state, vcell.x, FiniteDiffWENO5.wall_face_velocity(weno, v, face_velocity, :x), boundary, nx, χ, γ, ζ, ϵ, nothing, Offset0, ndrange = flx_l)
+                kernel_cons_y(fl.y, fr.y, state, vcell.y, FiniteDiffWENO5.wall_face_velocity(weno, v, face_velocity, :y), boundary, ny, χ, γ, ζ, ϵ, nothing, Offset0, ndrange = fly_l)
                 synchronize(backend)
                 kernel_cons_div(du, fl, fr, Δx_, Δy_, nothing, Offset0, ndrange = du_l)
             else
@@ -384,7 +381,7 @@ Advance the solution `u` by one time step using the 3rd-order Runge-Kutta method
 - `Δz`: Spatial grid size.
 - `backend::Backend`: Computational backend to use (e.g., CPU, GPU).
 """
-function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractArray{<:Real}, 3}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, Δz, backend::Backend; u_min = 0.0, u_max = 0.0) where {T_KA <: AbstractArray{<:Real, 3}}
+function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{AbstractArray{<:Real}, 3}}}, weno::FiniteDiffWENO5.WENOScheme, Δt, Δx, Δy, Δz, backend::Backend; u_min = 0.0, u_max = 0.0, face_velocity = nothing) where {T_KA <: AbstractArray{<:Real, 3}}
 
     @assert get_backend(u) == backend
     @assert get_backend(v.x) == backend
@@ -421,15 +418,12 @@ function WENO_step!(u::T_KA, v::NamedTuple{(:x, :y, :z), <:Tuple{Vararg{Abstract
         kernel_cons_y = WENO_conservative_flux_KA_3D_y!(backend)
         kernel_cons_z = WENO_conservative_flux_KA_3D_z!(backend)
         kernel_cons_div = WENO_conservative_divergence_KA_3D!(backend)
-        αx = conservative ? FiniteDiffWENO5.lf_speed(vcell.x, maximum) : zero(eltype(u))
-        αy = conservative ? FiniteDiffWENO5.lf_speed(vcell.y, maximum) : zero(eltype(u))
-        αz = conservative ? FiniteDiffWENO5.lf_speed(vcell.z, maximum) : zero(eltype(u))
 
         function stage3!(state)
             if conservative
-                kernel_cons_x(fl.x, fr.x, state, vcell.x, αx, boundary, nx, χ, γ, ζ, ϵ, nothing, Offset0, ndrange = flx_l)
-                kernel_cons_y(fl.y, fr.y, state, vcell.y, αy, boundary, ny, χ, γ, ζ, ϵ, nothing, Offset0, ndrange = fly_l)
-                kernel_cons_z(fl.z, fr.z, state, vcell.z, αz, boundary, nz, χ, γ, ζ, ϵ, nothing, Offset0, ndrange = flz_l)
+                kernel_cons_x(fl.x, fr.x, state, vcell.x, FiniteDiffWENO5.wall_face_velocity(weno, v, face_velocity, :x), boundary, nx, χ, γ, ζ, ϵ, nothing, Offset0, ndrange = flx_l)
+                kernel_cons_y(fl.y, fr.y, state, vcell.y, FiniteDiffWENO5.wall_face_velocity(weno, v, face_velocity, :y), boundary, ny, χ, γ, ζ, ϵ, nothing, Offset0, ndrange = fly_l)
+                kernel_cons_z(fl.z, fr.z, state, vcell.z, FiniteDiffWENO5.wall_face_velocity(weno, v, face_velocity, :z), boundary, nz, χ, γ, ζ, ϵ, nothing, Offset0, ndrange = flz_l)
                 synchronize(backend)
                 kernel_cons_div(du, fl, fr, Δx_, Δy_, Δz_, nothing, Offset0, ndrange = du_l)
             else

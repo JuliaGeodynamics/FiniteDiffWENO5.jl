@@ -2,7 +2,7 @@ using Test
 using MPI
 using FiniteDiffWENO5
 using FiniteDiffWENO5: weno_cartesian_topology, weno_owned_size, weno_global_offset,
-    owned_window, lf_speed
+    owned_window
 
 const comm = MPI.COMM_WORLD
 const nprocs = MPI.Comm_size(comm)
@@ -250,4 +250,49 @@ end
         WENO_step!(local_state, local_velocity, distributed, 0.001, 0.1, 0.1, 0.1)
         @test owned_window(local_state, topo) == view(reference, ranges...)
     end
+end
+
+@testset "2D conservative stag=true, ExtrapolateBC walls: matches serial" begin
+    nx, ny = 40, 24
+    halo = 3
+    dt, dx, dy = 0.2 / nx, 1 / nx, 1 / ny
+    boundary = ntuple(_ -> ExtrapolateBC(), 4)
+    # Face velocities vanish on the walls, so Σu is conserved exactly.
+    ufun(gi, gj) = 1 + 0.5cospi(2 * (gi - 0.5) / nx) * sinpi((gj - 0.5) / ny)
+    vxf(gi, gj) = sinpi(gi / nx) * (1 + 0.5 * (gj - 0.5) / ny)
+    vyf(gi, gj) = 0.5sinpi(gj / ny) * (1 + (gi - 0.5) / nx)
+
+    u_s = [ufun(i, j) for i in 1:nx, j in 1:ny]
+    total0 = sum(u_s)
+    weno_s = WENOScheme(copy(u_s); boundary, form = :conservative, stag = true, multithreading = false)
+    vel_s = (x = [vxf(i, j) for i in 0:nx, j in 1:ny], y = [vyf(i, j) for i in 1:nx, j in 0:ny])
+    for _ in 1:3
+        WENO_step!(u_s, vel_s, weno_s, dt, dx, dy)
+    end
+
+    topo = weno_cartesian_topology((nx, ny); comm, halo)
+    owned = weno_owned_size(topo)
+    offset = weno_global_offset(topo)
+    c0 = zeros(owned .+ 2halo)
+    for j in 1:owned[2], i in 1:owned[1]
+        c0[halo + i, halo + j] = ufun(offset[1] + i, offset[2] + j)
+    end
+    vfx = zeros(owned[1] + 2halo + 1, owned[2] + 2halo)
+    vfy = zeros(owned[1] + 2halo, owned[2] + 2halo + 1)
+    for j in 1:owned[2], i in 0:owned[1]
+        vfx[halo + 1 + i, halo + j] = vxf(offset[1] + i, offset[2] + j)
+    end
+    for j in 0:owned[2], i in 1:owned[1]
+        vfy[halo + i, halo + 1 + j] = vyf(offset[1] + i, offset[2] + j)
+    end
+    weno = WENOScheme(c0, topo; boundary, form = :conservative, stag = true, multithreading = false)
+    for _ in 1:3
+        WENO_step!(c0, (x = vfx, y = vfy), weno, dt, dx, dy)
+    end
+
+    r1, r2 = (halo + 1):(halo + owned[1]), (halo + 1):(halo + owned[2])
+    g1, g2 = (offset[1] + 1):(offset[1] + owned[1]), (offset[2] + 1):(offset[2] + owned[2])
+    @test c0[r1, r2] == u_s[g1, g2]
+    total = MPI.Allreduce(sum(c0[r1, r2]), +, comm)
+    @test abs(total - total0) <= 1.0e-13 * total0
 end
