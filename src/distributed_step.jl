@@ -100,28 +100,6 @@ function _sync_stage!(topo, weno::WENOScheme, a)
 end
 
 """
-    scheme_lf_speeds(weno, v)
-
-Return Lax-Friedrichs speeds, reduced over owned cells for conservative forms.
-"""
-scheme_lf_speeds(weno::WENOScheme, v) = _scheme_lf_speeds(weno.topology, weno, v)
-
-_scheme_lf_speeds(::NoTopology, weno::WENOScheme, v) = lf_speeds(weno.form, v)
-
-function _scheme_lf_speeds(topo, weno::WENOScheme, v)
-    is_conservative(weno.form) || return nothing
-    names = keys(v)
-    N = length(names)
-    geometry = weno.extent.geometry
-    local_speeds = ntuple(N) do d
-        component = getproperty(v, names[d])
-        lf_speed(owned_window(component, topo; geometry, stagger = nothing))
-    end
-    reduced = weno_allreduce_max(local_speeds, topo)
-    return NamedTuple{names}(reduced)
-end
-
-"""
     build_topology_multiphase_scheme(phases, topo; geometry = :cell, boundary,
                                       stag = false, multithreading = true)
 

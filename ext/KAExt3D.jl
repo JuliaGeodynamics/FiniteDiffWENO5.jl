@@ -202,13 +202,14 @@ end
 # 1D/2D counterparts.
 # Conservative split-flux reconstruction along x, y, z independently, matching
 # `conservative_semi_discretisation_weno5!` in 3D.
-@kernel inbounds = true function WENO_conservative_flux_KA_3D_x!(fl, fr, u, v, α, boundary, nx, χ, γ, ζ, ϵ, g, O)
+@kernel inbounds = true function WENO_conservative_flux_KA_3D_x!(fl, fr, u, v, vf, boundary, nx, χ, γ, ζ, ϵ, g, O)
     I = @index(Global, NTuple)
     I = I + O
     i, j, k = I[1], I[2], I[3]
     bL, bR = boundary[1], boundary[2]
     iwww = left_index(i, 3, nx, bL); iww = left_index(i, 2, nx, bL); iw = left_index(i, 1, nx, bL)
     ie = right_index(i, 0, nx, bR); iee = right_index(i, 1, nx, bR); ieee = right_index(i, 2, nx, bR)
+    α = FiniteDiffWENO5.stencil_lf_speed(v[iwww, j, k], v[iww, j, k], v[iw, j, k], v[ie, j, k], v[iee, j, k], v[ieee, j, k])
     fl[i, j, k] = weno5_reconstruction_upwind(
         FiniteDiffWENO5.lf_split_plus(u[iwww, j, k], v[iwww, j, k], α),
         FiniteDiffWENO5.lf_split_plus(u[iww, j, k], v[iww, j, k], α),
@@ -232,15 +233,25 @@ end
         fl[i, j, k] = FiniteDiffWENO5.lf_split_plus(u[end, j, k], v[end, j, k], α)
         fr[i, j, k] = FiniteDiffWENO5.lf_split_minus(FiniteDiffWENO5.inflow_value(bR, j, k), v[end, j, k], α)
     end
+    # ExtrapolateBC wall: v_face · u_boundary_cell, zero when v_face = 0.
+    if i == 1 && vf !== nothing && bL isa FiniteDiffWENO5.ExtrapolateBC
+        fl[i, j, k] = vf[i, j, k] * u[1, j, k]
+        fr[i, j, k] = zero(eltype(fl))
+    end
+    if i == nx + 1 && vf !== nothing && bR isa FiniteDiffWENO5.ExtrapolateBC
+        fl[i, j, k] = vf[i, j, k] * u[nx, j, k]
+        fr[i, j, k] = zero(eltype(fl))
+    end
 end
 
-@kernel inbounds = true function WENO_conservative_flux_KA_3D_y!(fl, fr, u, v, α, boundary, ny, χ, γ, ζ, ϵ, g, O)
+@kernel inbounds = true function WENO_conservative_flux_KA_3D_y!(fl, fr, u, v, vf, boundary, ny, χ, γ, ζ, ϵ, g, O)
     I = @index(Global, NTuple)
     I = I + O
     i, j, k = I[1], I[2], I[3]
     bL, bR = boundary[3], boundary[4]
     jwww = left_index(j, 3, ny, bL); jww = left_index(j, 2, ny, bL); jw = left_index(j, 1, ny, bL)
     je = right_index(j, 0, ny, bR); jee = right_index(j, 1, ny, bR); jeee = right_index(j, 2, ny, bR)
+    α = FiniteDiffWENO5.stencil_lf_speed(v[i, jwww, k], v[i, jww, k], v[i, jw, k], v[i, je, k], v[i, jee, k], v[i, jeee, k])
     fl[i, j, k] = weno5_reconstruction_upwind(
         FiniteDiffWENO5.lf_split_plus(u[i, jwww, k], v[i, jwww, k], α),
         FiniteDiffWENO5.lf_split_plus(u[i, jww, k], v[i, jww, k], α),
@@ -264,15 +275,25 @@ end
         fl[i, j, k] = FiniteDiffWENO5.lf_split_plus(u[i, end, k], v[i, end, k], α)
         fr[i, j, k] = FiniteDiffWENO5.lf_split_minus(FiniteDiffWENO5.inflow_value(bR, i, k), v[i, end, k], α)
     end
+    # ExtrapolateBC wall: v_face · u_boundary_cell, zero when v_face = 0.
+    if j == 1 && vf !== nothing && bL isa FiniteDiffWENO5.ExtrapolateBC
+        fl[i, j, k] = vf[i, j, k] * u[i, 1, k]
+        fr[i, j, k] = zero(eltype(fl))
+    end
+    if j == ny + 1 && vf !== nothing && bR isa FiniteDiffWENO5.ExtrapolateBC
+        fl[i, j, k] = vf[i, j, k] * u[i, ny, k]
+        fr[i, j, k] = zero(eltype(fl))
+    end
 end
 
-@kernel inbounds = true function WENO_conservative_flux_KA_3D_z!(fl, fr, u, v, α, boundary, nz, χ, γ, ζ, ϵ, g, O)
+@kernel inbounds = true function WENO_conservative_flux_KA_3D_z!(fl, fr, u, v, vf, boundary, nz, χ, γ, ζ, ϵ, g, O)
     I = @index(Global, NTuple)
     I = I + O
     i, j, k = I[1], I[2], I[3]
     bL, bR = boundary[5], boundary[6]
     kwww = left_index(k, 3, nz, bL); kww = left_index(k, 2, nz, bL); kw = left_index(k, 1, nz, bL)
     ke = right_index(k, 0, nz, bR); kee = right_index(k, 1, nz, bR); keee = right_index(k, 2, nz, bR)
+    α = FiniteDiffWENO5.stencil_lf_speed(v[i, j, kwww], v[i, j, kww], v[i, j, kw], v[i, j, ke], v[i, j, kee], v[i, j, keee])
     fl[i, j, k] = weno5_reconstruction_upwind(
         FiniteDiffWENO5.lf_split_plus(u[i, j, kwww], v[i, j, kwww], α),
         FiniteDiffWENO5.lf_split_plus(u[i, j, kww], v[i, j, kww], α),
@@ -295,6 +316,15 @@ end
     if k == nz + 1 && bR isa FiniteDiffWENO5.PrescribedInflowBC
         fl[i, j, k] = FiniteDiffWENO5.lf_split_plus(u[i, j, end], v[i, j, end], α)
         fr[i, j, k] = FiniteDiffWENO5.lf_split_minus(FiniteDiffWENO5.inflow_value(bR, i, j), v[i, j, end], α)
+    end
+    # ExtrapolateBC wall: v_face · u_boundary_cell, zero when v_face = 0.
+    if k == 1 && vf !== nothing && bL isa FiniteDiffWENO5.ExtrapolateBC
+        fl[i, j, k] = vf[i, j, k] * u[i, j, 1]
+        fr[i, j, k] = zero(eltype(fl))
+    end
+    if k == nz + 1 && vf !== nothing && bR isa FiniteDiffWENO5.ExtrapolateBC
+        fl[i, j, k] = vf[i, j, k] * u[i, j, nz]
+        fr[i, j, k] = zero(eltype(fl))
     end
 end
 
@@ -401,6 +431,7 @@ end
 function prepare_velocity_KA_3D!(weno, v, nx, ny, nz, backend)
     weno.stag || return v
     weno.vcenter === nothing && return v
+    v === weno.vcenter && return v
 
     px, py, pz = weno.vperiodic.x, weno.vperiodic.y, weno.vperiodic.z
     FiniteDiffWENO5.validate_staggered_velocity!(weno.vcenter, v; periodic = weno.vperiodic)

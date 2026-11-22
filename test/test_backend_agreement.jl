@@ -166,6 +166,41 @@ end
     end
 end
 
+@testset "CPU and KA agree at conservative ExtrapolateBC walls (stag = true)" begin
+    @testset "1D" begin
+        n = 64
+        x, xf = ((1:n) .- 0.5) ./ n, (0:n) ./ n
+        initial() = 1 .+ 0.5 .* cospi.(2 .* x)
+        v = (; x = sinpi.(xf) .+ 0.2)  # nonzero at both walls: inflow left, outflow right
+        cu, ku = initial(), initial()
+        cpu = WENOScheme(cu; form = :conservative, stag = true, multithreading = false)
+        ka = WENOScheme(ku, BACKEND; form = :conservative, stag = true)
+        for _ in 1:5
+            WENO_step!(cu, v, cpu, 0.2 / n, 1 / n)
+            WENO_step!(ku, (; x = copy(v.x)), ka, 0.2 / n, 1 / n, BACKEND)
+        end
+        KernelAbstractions.synchronize(BACKEND)
+        @test agree(ku, cu)
+    end
+
+    @testset "2D" begin
+        n = 32
+        x, xf = ((1:n) .- 0.5) ./ n, (0:n) ./ n
+        initial() = [1 + 0.5cospi(2xi) * sinpi(yj) for xi in x, yj in x]
+        v = (; x = [sinpi(xi) * (1 + 0.5yj) + 0.1 for xi in xf, yj in x],
+            y = [0.5sinpi(yj) * (1 + xi) - 0.1 for xi in x, yj in xf])
+        cu, ku = initial(), initial()
+        cpu = WENOScheme(cu; form = :conservative, stag = true, multithreading = false)
+        ka = WENOScheme(ku, BACKEND; form = :conservative, stag = true)
+        for _ in 1:5
+            WENO_step!(cu, v, cpu, 0.2 / n, 1 / n, 1 / n)
+            WENO_step!(ku, map(copy, v), ka, 0.2 / n, 1 / n, 1 / n, BACKEND)
+        end
+        KernelAbstractions.synchronize(BACKEND)
+        @test agree(ku, cu)
+    end
+end
+
 @testset "CPU and Chmy agree under compressible velocity" begin
     backend_chmy = KernelAbstractions.CPU()
     arch = Chmy.Arch(backend_chmy)
@@ -343,5 +378,66 @@ end
 
             @test agree(Array(Chmy.interior(chmy_u)), cpu_u)
         end
+    end
+end
+
+@testset "CPU and Chmy agree at conservative ExtrapolateBC walls (stag = true)" begin
+    backend_chmy = KernelAbstractions.CPU()
+    arch = Chmy.Arch(backend_chmy)
+    n = 64
+    x, xf = ((1:n) .- 0.5) ./ n, (0:n) ./ n
+    initial() = 1 .+ 0.5 .* cospi.(2 .* x)
+    face_velocity = sinpi.(xf) .+ 0.2
+    grid = Chmy.UniformGrid(arch; origin = (0.0,), extent = (1.0,), dims = (n,))
+    cu = initial()
+    cpu = WENOScheme(cu; form = :conservative, stag = true, multithreading = false)
+    chmy_u = Chmy.Field(backend_chmy, grid, Chmy.Center())
+    Chmy.set!(chmy_u, initial())
+    chmy_v = Chmy.VectorField(backend_chmy, grid)
+    Chmy.set!(chmy_v.x, face_velocity)
+    chmy = WENOScheme(chmy_u, grid; form = :conservative, stag = true)
+    for _ in 1:5
+        WENO_step!(cu, (; x = face_velocity), cpu, 0.2 / n, 1 / n)
+        WENO_step!(chmy_u, chmy_v, chmy, 0.2 / n, 1 / n, grid, arch)
+    end
+    @test agree(Array(Chmy.interior(chmy_u)), cu)
+end
+
+@testset "Tuple steps match per-field steps at conservative walls (stag = true)" begin
+    n = 32
+    x, xf = ((1:n) .- 0.5) ./ n, (0:n) ./ n
+    initial() = 1 .+ 0.5 .* cospi.(2 .* x)
+    face_velocity = sinpi.(xf) .+ 0.2
+
+    @testset "KernelAbstractions" begin
+        a, b = initial(), 2 .* initial()
+        sa, sb = copy(a), copy(b)
+        weno = WENOScheme(a, BACKEND; form = :conservative, stag = true)
+        v = (; x = copy(face_velocity))
+        for _ in 1:5
+            WENO_step!((a, b), v, weno, 0.2 / n, 1 / n, BACKEND; u_min = (0.0, 0.0), u_max = (0.0, 0.0))
+            WENO_step!(sa, v, weno, 0.2 / n, 1 / n, BACKEND)
+            WENO_step!(sb, v, weno, 0.2 / n, 1 / n, BACKEND)
+        end
+        KernelAbstractions.synchronize(BACKEND)
+        @test a == sa && b == sb
+    end
+
+    @testset "Chmy" begin
+        backend_chmy = KernelAbstractions.CPU()
+        arch = Chmy.Arch(backend_chmy)
+        grid = Chmy.UniformGrid(arch; origin = (0.0,), extent = (1.0,), dims = (n,))
+        field(f) = (u = Chmy.Field(backend_chmy, grid, Chmy.Center()); Chmy.set!(u, f); u)
+        a, b, sa, sb = field(initial()), field(2 .* initial()), field(initial()), field(2 .* initial())
+        v = Chmy.VectorField(backend_chmy, grid)
+        Chmy.set!(v.x, face_velocity)
+        weno = WENOScheme(a, grid; form = :conservative, stag = true)
+        for _ in 1:5
+            WENO_step!((a, b), v, weno, 0.2 / n, 1 / n, grid, arch; u_min = (0.0, 0.0), u_max = (0.0, 0.0))
+            WENO_step!(sa, v, weno, 0.2 / n, 1 / n, grid, arch)
+            WENO_step!(sb, v, weno, 0.2 / n, 1 / n, grid, arch)
+        end
+        @test Array(Chmy.interior(a)) == Array(Chmy.interior(sa))
+        @test Array(Chmy.interior(b)) == Array(Chmy.interior(sb))
     end
 end

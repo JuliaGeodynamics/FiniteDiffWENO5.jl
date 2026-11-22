@@ -4,7 +4,7 @@ using FiniteDiffWENO5: padded_weno_scheme, fill_physical_ghosts!, PaddedExtent,
     ProcessBC, left_index, right_index, valid_boundary, validate_boundary,
     validate_multiphase_boundary, eno5_difference_valid, eno5_stencil_start,
     eno5_face_to_center!, prepare_velocity!, scalar_operator_1D!,
-    scalar_operator_2D!, scalar_operator_3D!, lf_speed, WENOScheme
+    scalar_operator_2D!, scalar_operator_3D!, WENOScheme
 
 # ------------------------------------------------------------------
 # Small deterministic (non-trivial, non-symmetric) test fields so a bug
@@ -102,9 +102,8 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
         else
             (; x = detfield(n)) # collocated velocity, arbitrary but deterministic
         end
-        α_s = form === :conservative ? FiniteDiffWENO5.lf_speed(vcell_s.x) : 0.0
         du_s = zeros(n)
-        scalar_operator_1D!(du_s, u, vcell_s, weno_s, n, inv(n), 0.0, 1.0, α_s)
+        scalar_operator_1D!(du_s, u, vcell_s, weno_s, n, inv(n), 0.0, 1.0)
 
         # --- padded counterpart ---
         c0 = zeros(n + 2halo)
@@ -128,9 +127,8 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
             fill_physical_ghosts!(vc_p, extent, boundary)
             (; x = vc_p)
         end
-        α_p = form === :conservative ? FiniteDiffWENO5.lf_speed(view(vcell_p.x, (halo + 1):(halo + n))) : 0.0
         du_p = zeros(n + 2halo)
-        scalar_operator_1D!(du_p, u_p, vcell_p, weno_p, n + 2halo, inv(n), 0.0, 1.0, α_p)
+        scalar_operator_1D!(du_p, u_p, vcell_p, weno_p, n + 2halo, inv(n), 0.0, 1.0)
 
         @test du_p[(halo + 1):(halo + n)] == du_s
         if stag
@@ -212,7 +210,7 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
         weno_large = WENOScheme(copy(u_large); boundary = boundary_large, form = :nonconservative, stag = false, multithreading = false)
         vcell_large = (; x = detfield(n_large))
         du_large = zeros(n_large)
-        scalar_operator_1D!(du_large, u_large, vcell_large, weno_large, n_large, inv(n_large), 0.0, 1.0, 0.0)
+        scalar_operator_1D!(du_large, u_large, vcell_large, weno_large, n_large, inv(n_large), 0.0, 1.0)
 
         u_p = zeros(n_owned + 2halo)
         u_p .= u_large[(offset - halo + 1):(offset + n_owned + halo)]
@@ -223,7 +221,7 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
             form = :nonconservative, stag = false, multithreading = false,
         )
         du_p = zeros(n_owned + 2halo)
-        scalar_operator_1D!(du_p, u_p, vcell_p, weno_p, n_owned + 2halo, inv(n_large), 0.0, 1.0, 0.0)
+        scalar_operator_1D!(du_p, u_p, vcell_p, weno_p, n_owned + 2halo, inv(n_large), 0.0, 1.0)
 
         @test du_p[(halo + 1):(halo + n_owned)] == du_large[(offset + 1):(offset + n_owned)]
     end
@@ -240,7 +238,7 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
         weno_large = WENOScheme(copy(u_large); boundary = boundary_large, form = :nonconservative, stag = false, multithreading = false)
         vcell_large = (; x = detfield(nx_large, ny), y = detfield(nx_large, ny))
         du_large = zeros(nx_large, ny)
-        scalar_operator_2D!(du_large, u_large, vcell_large, weno_large, nx_large, ny, inv(nx_large), inv(ny), 0.0, 1.0, 0.0, 0.0)
+        scalar_operator_2D!(du_large, u_large, vcell_large, weno_large, nx_large, ny, inv(nx_large), inv(ny), 0.0, 1.0)
 
         u_p = u_large[(offset - halo + 1):(offset + nx_owned + halo), :]
         vcell_p = (
@@ -254,7 +252,7 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
             form = :nonconservative, stag = false, multithreading = false,
         )
         du_p = zeros(nx_owned + 2halo, ny)
-        scalar_operator_2D!(du_p, u_p, vcell_p, weno_p, nx_owned + 2halo, ny, inv(nx_large), inv(ny), 0.0, 1.0, 0.0, 0.0)
+        scalar_operator_2D!(du_p, u_p, vcell_p, weno_p, nx_owned + 2halo, ny, inv(nx_large), inv(ny), 0.0, 1.0)
 
         @test du_p[(halo + 1):(halo + nx_owned), :] == du_large[(offset + 1):(offset + nx_owned), :]
     end
@@ -272,7 +270,7 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
         vcenter_s = (x = zeros(n, n, n), y = zeros(n, n, n), z = zeros(n, n, n))
         FiniteDiffWENO5.eno5_face_to_center!(vcenter_s, (; x = vfx, y = vfy, z = vfz); periodic = (; x = false, y = false, z = false))
         du_s = zeros(n, n, n)
-        scalar_operator_3D!(du_s, u, vcenter_s, weno_s, n, n, n, inv(n), inv(n), inv(n), 0.0, 1.0, 0.0, 0.0, 0.0)
+        scalar_operator_3D!(du_s, u, vcenter_s, weno_s, n, n, n, inv(n), inv(n), inv(n), 0.0, 1.0)
 
         c0 = zeros(n + 2halo, n + 2halo, n + 2halo)
         c0[(halo + 1):(halo + n), (halo + 1):(halo + n), (halo + 1):(halo + n)] .= u
@@ -296,7 +294,7 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
 
         npad = n + 2halo
         du_p = zeros(npad, npad, npad)
-        scalar_operator_3D!(du_p, c0, weno_p.vcenter, weno_p, npad, npad, npad, inv(n), inv(n), inv(n), 0.0, 1.0, 0.0, 0.0, 0.0)
+        scalar_operator_3D!(du_p, c0, weno_p.vcenter, weno_p, npad, npad, npad, inv(n), inv(n), inv(n), 0.0, 1.0)
 
         r = (halo + 1):(halo + n)
         # `isapprox` with an extremely tight tolerance, not `==`: under
@@ -355,7 +353,7 @@ detface(n) = [1.0 + 0.4sinpi(2 * i / n) for i in 0:n]
         fill_physical_ghosts!(u_p, extent, boundary)
         vcell_p = (; x = zeros(n + 2halo))
         du_p = zeros(n + 2halo)
-        @test scalar_operator_1D!(du_p, u_p, vcell_p, weno_p, n + 2halo, inv(n), 0.0, 1.0, 0.0) === nothing
+        @test scalar_operator_1D!(du_p, u_p, vcell_p, weno_p, n + 2halo, inv(n), 0.0, 1.0) === nothing
     end
 
     @testset "--check-bounds friendliness: index functions stay in range across the padded extent" begin
@@ -388,12 +386,11 @@ end
     )
     up = [u[mod1(i - h, n)] for i in 1:(n + 2h)]
     vp = [v[mod1(i - h, n)] for i in 1:(n + 2h)]
-    alpha = FiniteDiffWENO5.lf_speed(v)
     FiniteDiffWENO5.conservative_semi_discretisation_weno5!(
-        serial.du, u, (; x = v), serial, n, Float64(n), alpha
+        serial.du, u, (; x = v), serial, n, Float64(n)
     )
     FiniteDiffWENO5.conservative_semi_discretisation_weno5!(
-        padded.du, up, (; x = vp), padded, n + 2h, Float64(n), alpha
+        padded.du, up, (; x = vp), padded, n + 2h, Float64(n)
     )
     @test serial.fl.x == padded.fl.x[(h + 1):(h + n + 1)]
     @test serial.fr.x == padded.fr.x[(h + 1):(h + n + 1)]

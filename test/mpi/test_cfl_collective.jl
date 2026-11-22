@@ -181,25 +181,6 @@ end
         @test dt ≈ cfl / (vx_max / dx + vz_max / dz)
     end
 
-    @testset "scheme_lf_speeds matches the global reference when components peak on different ranks" begin
-        topo = weno_cartesian_topology((24, 16); comm, halo = 3)
-        owned = weno_owned_size(topo)
-        c0 = zeros(owned .+ 6)
-        weno = WENOScheme(
-            c0, topo; boundary = ntuple(_ -> ExtrapolateBC(), 4), form = :conservative,
-            stag = false, multithreading = false,
-        )
-        vx = zeros(owned .+ 6)
-        vy = zeros(owned .+ 6)
-        fill!(owned_window(vx, topo), rank == 0 ? 2.0 : 0.1)
-        fill!(owned_window(vy, topo), rank == nprocs - 1 ? 5.0 : 0.1)
-
-        speeds = FiniteDiffWENO5.scheme_lf_speeds(weno, (; x = vx, y = vy))
-
-        @test speeds.x == MPI.Allreduce(maximum(abs, owned_window(vx, topo)), max, comm)
-        @test speeds.y == MPI.Allreduce(maximum(abs, owned_window(vy, topo)), max, comm)
-    end
-
     # A rank that sees dt_cfl == Inf must still take part in the debug check;
     # returning early left the other ranks blocked in the reduction forever.
     @testset "weno_substeps(debug = true) throws on every rank when ranks disagree" begin

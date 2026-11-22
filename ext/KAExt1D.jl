@@ -107,11 +107,10 @@ end
     end
 end
 
-# Conservative transport by global Lax-Friedrichs splitting; the device counterpart
-# of `conservative_semi_discretisation_weno5!`. Split stencil values are formed
-# locally from (u, v), so no full-domain f± scratch arrays are needed.
+# Device counterpart of `conservative_semi_discretisation_weno5!` (local
+# Lax-Friedrichs splitting, no f± scratch arrays).
 @kernel inbounds = true function WENO_conservative_flux_KA_1D!(
-        fl, fr, u, v, α, boundary, nx, χ, γ, ζ, ϵ, g, O,
+        fl, fr, u, v, vf, boundary, nx, χ, γ, ζ, ϵ, g, O,
     )
     I = @index(Global, NTuple)
     I = I + O
@@ -125,6 +124,7 @@ end
     ie = FiniteDiffWENO5.right_index(i, 0, nx, bR)
     iee = FiniteDiffWENO5.right_index(i, 1, nx, bR)
     ieee = FiniteDiffWENO5.right_index(i, 2, nx, bR)
+    α = FiniteDiffWENO5.stencil_lf_speed(v[iwww], v[iww], v[iw], v[ie], v[iee], v[ieee])
 
     fl[i] = FiniteDiffWENO5.weno5_reconstruction_upwind(
         FiniteDiffWENO5.lf_split_plus(u[iwww], v[iwww], α),
@@ -153,6 +153,15 @@ end
         fl[i] = FiniteDiffWENO5.lf_split_plus(u[end], v[end], α)
         fr[i] = FiniteDiffWENO5.lf_split_minus(FiniteDiffWENO5.inflow_value(bR), v[end], α)
     end
+    # ExtrapolateBC wall: v_face · u_boundary_cell, zero when v_face = 0.
+    if i == 1 && vf !== nothing && bL isa FiniteDiffWENO5.ExtrapolateBC
+        fl[i] = vf[i] * u[1]
+        fr[i] = zero(eltype(fl))
+    end
+    if i == nx + 1 && vf !== nothing && bR isa FiniteDiffWENO5.ExtrapolateBC
+        fl[i] = vf[i] * u[nx]
+        fr[i] = zero(eltype(fl))
+    end
 end
 
 @kernel inbounds = true function WENO_conservative_divergence_KA_1D!(du, fl, fr, Δx_, g, O)
@@ -172,6 +181,7 @@ through, matching the CPU behaviour of returning the input untouched.
 function prepare_velocity_KA_1D!(weno, v, nx, backend)
     weno.stag || return v
     weno.vcenter === nothing && return v
+    v === weno.vcenter && return v
 
     periodic = weno.vperiodic.x
     FiniteDiffWENO5.validate_staggered_velocity!(weno.vcenter, v; periodic = weno.vperiodic)

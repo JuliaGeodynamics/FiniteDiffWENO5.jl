@@ -38,22 +38,20 @@ end
 
 
 """
-    scalar_operator_1D!(du, state, vcell, weno, nx, Δx_, u_min, u_max)
+    scalar_operator_1D!(du, state, vcell, weno, nx, Δx_, u_min, u_max; vface = nothing)
 
 Evaluate one spatial operator for `state`, selected by `weno.form` rather than by
 the velocity layout. `vcell` is already collocated with `state`.
 
-The two branches need different face quantities, so each builds its own: the
-material form reconstructs the transported state `u`, while the conservative form
-reconstructs the split point fluxes `f± = ½(vu ± αu)` directly into the same
-`fl`/`fr` buffers.
+The material form reconstructs `u`; the conservative form reconstructs the split
+fluxes `f± = ½(vu ± αu)` into the same `fl`/`fr` buffers.
 """
-@inline function scalar_operator_1D!(du, state, vcell, weno::WENOScheme, nx, Δx_, u_min, u_max, α)
+@inline function scalar_operator_1D!(du, state, vcell, weno::WENOScheme, nx, Δx_, u_min, u_max; vface = nothing)
     if !is_conservative(weno.form)
         WENO_flux!(weno.fl, weno.fr, state, weno, nx, u_min, u_max)
         material_semi_discretisation_weno5!(du, vcell, weno, Δx_)
     else
-        conservative_semi_discretisation_weno5!(du, state, vcell, weno, nx, Δx_, α)
+        conservative_semi_discretisation_weno5!(du, state, vcell, weno, nx, Δx_; vface)
     end
     return nothing
 end
